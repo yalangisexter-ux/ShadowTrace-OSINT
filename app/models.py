@@ -20,13 +20,14 @@ class SearchRun(Base):
     query_type: Mapped[str] = mapped_column(String(32), default="username")
     query_value: Mapped[str] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    evidence: Mapped[list] = relationship("Evidence", back_populates="run", cascade="all, delete-orphan")
+    evidence: Mapped[list["Evidence"]] = relationship("Evidence", back_populates="run", cascade="all, delete-orphan")
 
 class Evidence(Base):
     __tablename__ = "evidence"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     run_id: Mapped[int] = mapped_column(ForeignKey("search_runs.id", ondelete="CASCADE"), index=True)
     provider: Mapped[str] = mapped_column(String(64))
+    category: Mapped[str | None] = mapped_column(String(32), nullable=True)
     profile_url: Mapped[str] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(24))
     http_status: Mapped[int | None] = mapped_column(Integer, nullable=True)
