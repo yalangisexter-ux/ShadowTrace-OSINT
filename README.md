@@ -36,16 +36,37 @@ Run tests:
 pytest -q
 ```
 
-## Deploy on Render
+## Deploy on Render (full ownership checklist)
 
-1. Create a PostgreSQL database in your Render workspace.
-2. Open the [Render Blueprint setup](https://dashboard.render.com/blueprint/new?repo=https%3A%2F%2Fgithub.com%2Fyalangisexter-ux%2FShadowTrace-OSINT).
-3. Review the service configuration and apply it.
-4. Set `DATABASE_URL` to the database's **internal** connection string.
-5. Set `SECRET_KEY` to a cryptographically random value of at least 32 characters.
-6. Wait for deployment and verify `https://YOUR-SERVICE.onrender.com/healthz` returns `{"status":"ok",...}`.
+Service URL (once healthy): https://shadowtrace-osint.onrender.com  
+Dashboard: https://dashboard.render.com/web/srv-dbqtf38u01pc73emvm6g
 
-The Blueprint does not create a database automatically. This is deliberate: database plan, region, retention, and billing should be selected in the Render workspace. Production startup refuses to run with SQLite or the development secret. Never commit production credentials.
+### Required one-time setup
+
+1. **Create a PostgreSQL database** in the same Render workspace (New → PostgreSQL).  
+   Prefer the same region as the web service. Copy the **Internal Database URL**.
+
+2. **Set Environment Variables** on the web service:
+   - `DATABASE_URL` → the Internal Database URL (must start with `postgresql://` or `postgres://`)
+   - `SECRET_KEY` → a long random value (≥ 32 characters). Generate with:
+     ```bash
+     python -c "import secrets; print(secrets.token_urlsafe(48))"
+     ```
+   - `APP_ENV` should already be `production`
+
+3. **Trigger a new deploy** (or push any commit). Watch the Logs tab.
+
+4. **Verify**:
+   ```bash
+   curl https://shadowtrace-osint.onrender.com/healthz
+   ```
+   Expected healthy response:
+   ```json
+   {"status":"ok","service":"shadowtrace-osint","version":"0.1.1","config":{"secret_key_set":true,"database_configured":true,...}}
+   ```
+   If `status` is `"degraded"`, the `config` object tells you exactly which setting is still missing.
+
+The app now boots even when configuration is incomplete and reports the missing pieces via `/healthz` instead of crashing. Never commit production credentials.
 
 ## API
 

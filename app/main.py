@@ -17,14 +17,19 @@ from app.providers import search_username, validate_username
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Soft production checks — warn instead of hard-crash so the service can
+    # still boot and report status via /healthz while env vars are finished.
     if settings.app_env.lower() == "production":
         if settings.secret_key == "local-development-only-change-me" or len(settings.secret_key) < 32:
-            raise RuntimeError("Production requires a SECRET_KEY of at least 32 characters.")
-        if settings.database_url.startswith("sqlite"):
-            raise RuntimeError("Production requires a persistent PostgreSQL DATABASE_URL.")
-    Base.metadata.create_all(bind=engine)
+            print("WARNING: SECRET_KEY is missing or too short. Set a strong SECRET_KEY (>=32 chars) in Render env vars.")
+        if settings.database_url.startswith("sqlite") or not settings.database_url.strip():
+            print("WARNING: DATABASE_URL is missing or points to SQLite. Set the Internal PostgreSQL URL in Render.")
+    try:
+        Base.metadata.create_all(bind=engine)
+    except Exception as exc:
+        print(f"WARNING: database init failed: {exc}")
     yield
-app = FastAPI(title="ShadowTrace OSINT API", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="ShadowTrace OSINT API", version="0.1.1", lifespan=lifespan)
 origins = [x.strip() for x in settings.cors_origins.split(",") if x.strip()]
 if origins:
     from fastapi.middleware.cors import CORSMiddleware
@@ -50,7 +55,22 @@ def throttle(key: str, limit: int = 5, window: int = 60):
     if len(q) >= limit: raise HTTPException(status_code=429, detail="Too many requests. Try again shortly.")
     q.append(now)
 @app.get("/healthz")
-def healthz(): return {"status": "ok", "service": "shadowtrace-osint", "time": datetime.now(timezone.utc).isoformat()}
+def healthz():
+    secret_ok = settings.secret_key != "local-development-only-change-me" and len(settings.secret_key) >= 32
+    db_url = (settings.database_url or "").strip()
+    db_ok = bool(db_url) and not db_url.startswith("sqlite")
+    status = "ok" if secret_ok and db_ok else "degraded"
+    return {
+        "status": status,
+        "service": "shadowtrace-osint",
+        "version": "0.1.1",
+        "time": datetime.now(timezone.utc).isoformat(),
+        "config": {
+            "secret_key_set": secret_ok,
+            "database_configured": db_ok,
+            "app_env": settings.app_env,
+        },
+    }
 @app.post("/api/v1/auth/register", status_code=201)
 def register(payload: Credentials, db: Session = Depends(get_db)):
     email = payload.email.lower(); throttle("register:" + email, 3, 3600)
