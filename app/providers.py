@@ -43,8 +43,10 @@ async def _check(client: httpx.AsyncClient, provider: Provider, username: str) -
         else:
             state, confidence, detail = "inconclusive", "none", f"Unexpected provider response (HTTP {status})."
         return {"provider": provider.name, "profile_url": url, "status": state, "http_status": status, "confidence": confidence, "detail": detail, "checked_at": checked}
-    except (httpx.TimeoutException, httpx.NetworkError):
-        return {"provider": provider.name, "profile_url": url, "status": "inconclusive", "http_status": None, "confidence": "none", "detail": "Network timeout or connection error.", "checked_at": checked}
+    except (httpx.TimeoutException, httpx.NetworkError, httpx.HTTPError) as exc:
+        return {"provider": provider.name, "profile_url": url, "status": "inconclusive", "http_status": None, "confidence": "none", "detail": f"Request failed: {type(exc).__name__}", "checked_at": checked}
+    except Exception as exc:
+        return {"provider": provider.name, "profile_url": url, "status": "inconclusive", "http_status": None, "confidence": "none", "detail": f"Unexpected error: {type(exc).__name__}", "checked_at": checked}
 
 async def search_username(username: str) -> list[dict]:
     username = validate_username(username)

@@ -71,7 +71,12 @@ async def username_search(payload: UsernameQuery, user: User = Depends(current_u
     except ValueError as exc: raise HTTPException(status_code=422, detail=str(exc))
     throttle(f"search:{user.id}", 5, 60); results = await search_username(username)
     run = SearchRun(user_id=user.id, query_type="username", query_value=username); db.add(run); db.flush()
-    for item in results: db.add(Evidence(run_id=run.id, **item))
+    for item in results:
+        data = dict(item)
+        checked = data.pop("checked_at")
+        if isinstance(checked, str):
+            checked = datetime.fromisoformat(checked)
+        db.add(Evidence(run_id=run.id, checked_at=checked, **data))
     db.commit(); db.refresh(run)
     return {"id": run.id, "query_type": run.query_type, "query_value": run.query_value, "created_at": run.created_at.isoformat(), "evidence": results, "notice": "Candidate matches are not identity verification. Review each source manually."}
 @app.get("/api/v1/search/runs")
