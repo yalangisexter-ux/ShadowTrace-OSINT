@@ -17,6 +17,11 @@ from app.providers import search_username, validate_username
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    if settings.app_env.lower() == "production":
+        if settings.secret_key == "local-development-only-change-me" or len(settings.secret_key) < 32:
+            raise RuntimeError("Production requires a SECRET_KEY of at least 32 characters.")
+        if settings.database_url.startswith("sqlite"):
+            raise RuntimeError("Production requires a persistent PostgreSQL DATABASE_URL.")
     Base.metadata.create_all(bind=engine)
     yield
 app = FastAPI(title="ShadowTrace OSINT API", version="0.1.0", lifespan=lifespan)
