@@ -510,9 +510,26 @@ app.post("/api/v1/search/username", async (c) => {
     queryLabel = username;
     const depth = parseInt(body.depth || "0", 10) || 0;
     results = await searchUsername(username, depth);
+
+    const discoveredNames = new Set<string>();
+    const discoveredAvatars = new Set<string>();
+
+    for (const r of results) {
+      if (r.status === "candidate") {
+        if (r.identity_name && r.identity_name !== username) {
+          discoveredNames.add(r.identity_name);
+        }
+        if (r.extra_fields?.Avatar) {
+          discoveredAvatars.add(r.extra_fields.Avatar);
+        }
+      }
+    }
+
     entities = {
-      names: [username],
-      profile_pictures: [`https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(username)}`],
+      names: discoveredNames.size > 0 ? [username, ...Array.from(discoveredNames)] : [username],
+      profile_pictures: discoveredAvatars.size > 0 
+        ? Array.from(discoveredAvatars) 
+        : [`https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(username)}`],
       banners: [],
       usernames: [username],
       emails: [],

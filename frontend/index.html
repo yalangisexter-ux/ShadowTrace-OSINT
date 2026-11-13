@@ -660,10 +660,10 @@ main {
   <!-- Search Type Pill Tabs (Centered like fingerprint.to) -->
   <div class="nav-tabs-wrapper">
     <div class="search-type-tabs">
-      <button class="nav-tab-btn" onclick="setSearchType('username')">@ Username</button>
-      <button class="nav-tab-btn" onclick="setSearchType('email')">✉ Email</button>
-      <button class="nav-tab-btn active" onclick="setSearchType('phone')">📞 Phone</button>
-      <button class="nav-tab-btn" onclick="setSearchType('domain')">🌐 Domain</button>
+      <button class="nav-tab-btn" data-type="username" onclick="setSearchType('username')">@ Username</button>
+      <button class="nav-tab-btn" data-type="email" onclick="setSearchType('email')">✉ Email</button>
+      <button class="nav-tab-btn active" data-type="phone" onclick="setSearchType('phone')">📞 Phone</button>
+      <button class="nav-tab-btn" data-type="domain" onclick="setSearchType('domain')">🌐 Domain</button>
     </div>
   </div>
 
@@ -875,8 +875,13 @@ function signOut() {
 
 function setSearchType(type) {
   currentSearchType = type;
-  document.querySelectorAll(".nav-tab-btn").forEach(b => b.classList.remove("active"));
-  if (event && event.target) event.target.classList.add("active");
+  document.querySelectorAll(".nav-tab-btn").forEach(b => {
+    if (b.getAttribute("data-type") === type || b.textContent.toLowerCase().includes(type)) {
+      b.classList.add("active");
+    } else {
+      b.classList.remove("active");
+    }
+  });
   const input = el("searchInput");
   const prefix = el("countryPrefix");
 
@@ -902,19 +907,7 @@ function setSearchType(type) {
 
 function quickFill(val, type) {
   el("searchInput").value = val;
-  currentSearchType = type;
-  document.querySelectorAll(".nav-tab-btn").forEach(b => {
-    if (b.textContent.toLowerCase().includes(type)) {
-      b.classList.add("active");
-    } else {
-      b.classList.remove("active");
-    }
-  });
-  if (type === "phone") {
-    el("countryPrefix").classList.remove("hidden");
-  } else {
-    el("countryPrefix").classList.add("hidden");
-  }
+  setSearchType(type);
   executeSearch();
 }
 

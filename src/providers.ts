@@ -395,48 +395,145 @@ export async function checkProvider(
     let state: "candidate" | "not_found" | "inconclusive" = "inconclusive";
     let confidence: "none" | "low" | "medium" | "high" = "none";
     let detail = "";
+    let identityName: string | undefined;
+    let identifierDisplay: string | undefined;
+    let fieldsCount = 1;
+    let extraFields: Record<string, string> = {};
 
     // 1. Specialized API probes
     if (provider.type === "api_github") {
+      let isGithubCandidate = false;
+      let ghBio = "";
+      let ghName = "";
+      let ghAvatar = `https://github.com/${username}.png`;
+      let ghRepos = 0;
+      let ghFollowers = 0;
+
       if (status === 200) {
-        const d: any = await response.json();
-        state = "candidate";
-        confidence = "high";
-        detail = `Active GitHub profile (${d.public_repos ?? 0} repos, ${d.followers ?? 0} followers). ${d.bio ? 'Bio: ' + d.bio.slice(0, 80) : ''}`;
+        try {
+          const d: any = await response.json();
+          isGithubCandidate = true;
+          ghRepos = d.public_repos ?? 0;
+          ghFollowers = d.followers ?? 0;
+          ghBio = d.bio || "";
+          ghName = d.name || "";
+          ghAvatar = d.avatar_url || ghAvatar;
+        } catch {}
       } else if (status === 404) {
         state = "not_found";
         confidence = "none";
         detail = "GitHub user does not exist.";
       } else {
-        state = "inconclusive";
-        confidence = "none";
-        detail = `GitHub API rate-limited or restricted (HTTP ${status}).`;
+        // Fallback: Check GitHub direct endpoint & HTML
+        try {
+          const imgRes = await fetch(`https://github.com/${encodeURIComponent(username)}.png`, {
+            method: "GET",
+            headers: { "User-Agent": USER_AGENT },
+            redirect: "manual",
+          });
+          if (imgRes.status === 302 || imgRes.status === 200) {
+            isGithubCandidate = true;
+            const htmlRes = await fetch(`https://github.com/${encodeURIComponent(username)}`, {
+              method: "GET",
+              headers: { "User-Agent": USER_AGENT },
+            });
+            if (htmlRes.ok) {
+              const html = await htmlRes.text();
+              const titleMatch = html.match(/<title>(.*?)\((.*?)\) · GitHub<\/title>/i);
+              if (titleMatch && titleMatch[2]) {
+                ghName = titleMatch[2].trim();
+              }
+            }
+          } else if (imgRes.status === 404) {
+            state = "not_found";
+            confidence = "none";
+            detail = "GitHub user does not exist.";
+          }
+        } catch {}
+      }
+
+      if (isGithubCandidate) {
+        state = "candidate";
+        confidence = "high";
+        identityName = ghName || username;
+        identifierDisplay = `@${username}`;
+        fieldsCount = 3;
+        extraFields = {
+          "Full Name": ghName || username,
+          "Profile": targetUrl,
+          "Avatar": ghAvatar,
+          ...(ghRepos ? { "Public Repositories": String(ghRepos) } : {}),
+          ...(ghFollowers ? { "Followers": String(ghFollowers) } : {}),
+          ...(ghBio ? { "Bio": ghBio } : {})
+        };
+        detail = `Active GitHub profile (${ghName ? ghName + ' · ' : ''}@${username}).`;
       }
     } else if (provider.type === "api_gitlab") {
+      let isGitlabCandidate = false;
+      let glName = "";
+      let glId = "";
+
       if (status === 200) {
-        const arr: any = await response.json();
-        if (Array.isArray(arr) && arr.length > 0) {
-          state = "candidate";
-          confidence = "high";
-          detail = `Active GitLab account (User ID ${arr[0].id}, Name: ${arr[0].name || username}).`;
-        } else {
-          state = "not_found";
-          confidence = "none";
-          detail = "GitLab user does not exist.";
-        }
+        try {
+          const arr: any = await response.json();
+          if (Array.isArray(arr) && arr.length > 0) {
+            isGitlabCandidate = true;
+            glId = String(arr[0].id);
+            glName = arr[0].name || username;
+          } else {
+            state = "not_found";
+            confidence = "none";
+            detail = "GitLab user does not exist.";
+          }
+        } catch {}
       } else if (status === 404) {
         state = "not_found";
         confidence = "none";
         detail = "GitLab user does not exist.";
       } else {
-        state = "inconclusive";
-        detail = `GitLab responded with HTTP ${status}.`;
+        // Fallback: Check GitLab HTML page
+        try {
+          const glRes = await fetch(`https://gitlab.com/${encodeURIComponent(username)}`, {
+            method: "GET",
+            headers: { "User-Agent": USER_AGENT },
+          });
+          if (glRes.status === 200) {
+            isGitlabCandidate = true;
+            const html = await glRes.text();
+            const titleMatch = html.match(/<title>(.*?) · GitLab<\/title>/i);
+            if (titleMatch && titleMatch[1]) {
+              glName = titleMatch[1].trim();
+            }
+          }
+        } catch {}
+      }
+
+      if (isGitlabCandidate) {
+        state = "candidate";
+        confidence = "high";
+        identityName = glName || username;
+        identifierDisplay = `GitLab: @${username}`;
+        fieldsCount = 2;
+        extraFields = {
+          "Name": glName || username,
+          "Profile": targetUrl,
+          ...(glId ? { "User ID": glId } : {})
+        };
+        detail = `Active GitLab account (${glName || username}).`;
       }
     } else if (provider.type === "api_chess") {
       if (status === 200) {
         const d: any = await response.json();
         state = "candidate";
         confidence = "high";
+        identityName = d.name || username;
+        identifierDisplay = `Chess.com: @${d.username || username}`;
+        fieldsCount = 3;
+        extraFields = {
+          "Player": d.name || username,
+          "Player ID": String(d.player_id || ""),
+          "Status": d.status || "active"
+        };
         detail = `Active Chess.com player (ID: ${d.player_id ?? d.username}, Status: ${d.status || "active"}).`;
       } else if (status === 404) {
         state = "not_found";
@@ -451,6 +548,13 @@ export async function checkProvider(
         const d: any = await response.json();
         state = "candidate";
         confidence = "high";
+        identityName = d.username || username;
+        identifierDisplay = `Lichess: @${d.username || username}`;
+        fieldsCount = 2;
+        extraFields = {
+          "Player": d.username || username,
+          "Total Games": String(d.count?.all || 0)
+        };
         detail = `Active Lichess player (Play count: ${d.count?.all ?? 0}, Seen: ${d.seenAt ? new Date(d.seenAt).toISOString().slice(0,10) : "recently"}).`;
       } else if (status === 404) {
         state = "not_found";
@@ -465,7 +569,15 @@ export async function checkProvider(
         const d: any = await response.json();
         state = "candidate";
         confidence = "high";
-        detail = `Active Docker Hub publisher account (Username: ${d.username || username}).`;
+        identityName = d.username || username;
+        identifierDisplay = `Docker Hub: @${d.username || username}`;
+        fieldsCount = 3;
+        extraFields = {
+          "Username": d.username || username,
+          "Account Type": d.type || "Developer",
+          "Registry": "Docker Hub"
+        };
+        detail = `Active Docker Hub publisher account (@${d.username || username}).`;
       } else if (status === 404) {
         state = "not_found";
         confidence = "none";
@@ -485,6 +597,13 @@ export async function checkProvider(
           const d: any = JSON.parse(text);
           state = "candidate";
           confidence = "high";
+          identityName = username;
+          identifierDisplay = `Hacker News: @${username}`;
+          fieldsCount = 2;
+          extraFields = {
+            "Karma": String(d.karma ?? 0),
+            "Registered": d.created ? new Date(d.created * 1000).toISOString().slice(0, 10) : "Active"
+          };
           detail = `Verified Hacker News user (Karma: ${d.karma ?? 0}).`;
         }
       } else if (status === 404) {
@@ -500,6 +619,13 @@ export async function checkProvider(
         if (d.them && d.them[0] && d.them[0].id) {
           state = "candidate";
           confidence = "high";
+          identityName = username;
+          identifierDisplay = `Keybase: ${username}`;
+          fieldsCount = 2;
+          extraFields = {
+            "Keybase UID": d.them[0].id,
+            "Verification": "Cryptographically Verified PGP"
+          };
           detail = `Verified Keybase cryptographic identity.`;
         } else {
           state = "not_found";
@@ -516,6 +642,13 @@ export async function checkProvider(
         if (text.includes('"id"') && !text.includes('"error"')) {
           state = "candidate";
           confidence = "high";
+          identityName = username;
+          identifierDisplay = `ArtStation: @${username}`;
+          fieldsCount = 2;
+          extraFields = {
+            "Platform": "ArtStation",
+            "Profile": targetUrl
+          };
           detail = "Verified ArtStation creator profile.";
         } else {
           state = "not_found";
@@ -535,6 +668,13 @@ export async function checkProvider(
         if (d && d.id) {
           state = "candidate";
           confidence = "high";
+          identityName = username;
+          identifierDisplay = `Glitch: @${username}`;
+          fieldsCount = 2;
+          extraFields = {
+            "Glitch ID": String(d.id),
+            "Platform": "Glitch Web Development"
+          };
           detail = `Active Glitch developer account (ID: ${d.id}).`;
         } else {
           state = "not_found";
@@ -550,6 +690,13 @@ export async function checkProvider(
         if (d.data && d.data.name) {
           state = "candidate";
           confidence = "high";
+          identityName = d.data.name;
+          identifierDisplay = `u/${d.data.name}`;
+          fieldsCount = 2;
+          extraFields = {
+            "Total Karma": String(d.data.total_karma ?? 0),
+            "Account": "Verified Reddit User"
+          };
           detail = `Active Reddit account (Karma: ${d.data.total_karma ?? 0}).`;
         } else {
           state = "not_found";
@@ -614,6 +761,17 @@ export async function checkProvider(
       }
     }
 
+    if (state === "candidate") {
+      identityName = identityName || username;
+      identifierDisplay = identifierDisplay || `@${username} on ${provider.name}`;
+      fieldsCount = Math.max(fieldsCount, 1);
+      extraFields = {
+        "Platform": provider.name,
+        "Profile URL": targetUrl,
+        ...extraFields
+      };
+    }
+
     return {
       provider: provider.name,
       category: provider.category,
@@ -626,6 +784,10 @@ export async function checkProvider(
       checked_at: checkedAt,
       layer,
       seed,
+      identity_name: identityName,
+      identifier_display: identifierDisplay,
+      fields_count: fieldsCount,
+      extra_fields: Object.keys(extraFields).length > 0 ? extraFields : undefined,
     };
   } catch (err: any) {
     const isAbort = err?.name === "AbortError";
