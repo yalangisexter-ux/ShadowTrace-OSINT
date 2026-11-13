@@ -27,6 +27,10 @@ export interface CheckResult {
   checked_at: string;
   layer?: number;
   seed?: string;
+  identity_name?: string;
+  identifier_display?: string;
+  fields_count?: number;
+  extra_fields?: Record<string, string>;
 }
 
 export const PROVIDERS: Provider[] = [

@@ -359,11 +359,40 @@ app.post("/api/v1/search/username", async (c) => {
 
   let results: CheckResult[] = [];
   let queryLabel = rawQuery;
+  let entities: any = {
+    names: [],
+    profile_pictures: [],
+    banners: [],
+    usernames: [],
+    emails: [],
+    phones: [],
+    first_seen: undefined,
+    last_seen: undefined,
+  };
 
   // 1. Phone Intelligence
   if (searchType === "phone") {
     const phoneData = analyzePhoneNumber(rawQuery);
     queryLabel = phoneData.formatted;
+    entities = phoneData.entities;
+
+    for (const p of phoneData.platforms) {
+      results.push({
+        provider: p.name,
+        category: p.category.toLowerCase().includes("messag") ? "social" : (p.category.toLowerCase().includes("finan") ? "identity" : "identity"),
+        profile_url: p.url,
+        domain: p.icon,
+        status: p.status === "verified" ? "candidate" : p.status,
+        http_status: 200,
+        confidence: "high",
+        identity_name: p.identityName,
+        identifier_display: `Phone: ${phoneData.formatted}`,
+        fields_count: p.fieldsCount || 1,
+        extra_fields: p.extraFields,
+        detail: p.detail,
+        checked_at: new Date().toISOString(),
+      });
+    }
 
     results.push({
       provider: `${phoneData.country} Telecom Authority`,
@@ -373,28 +402,42 @@ app.post("/api/v1/search/username", async (c) => {
       status: "candidate",
       http_status: 200,
       confidence: "high",
+      identifier_display: `E.164: ${phoneData.e164}`,
+      fields_count: 4,
+      extra_fields: {
+        "E.164 Standard": phoneData.e164,
+        "Carrier Allocation": phoneData.carrier,
+        "Circle / Region": phoneData.region,
+        "Line Type": phoneData.lineType,
+        "Timezone": phoneData.timezone
+      },
       detail: `E.164: ${phoneData.e164} · Carrier: ${phoneData.carrier} · Circle/Region: ${phoneData.region} · Type: ${phoneData.lineType} · TZ: ${phoneData.timezone}`,
       checked_at: new Date().toISOString(),
     });
-
-    for (const p of phoneData.platforms) {
-      results.push({
-        provider: p.name,
-        category: p.category.toLowerCase().includes("messag") ? "social" : "identity",
-        profile_url: p.url,
-        domain: p.icon,
-        status: p.status === "verified" ? "candidate" : p.status,
-        http_status: 200,
-        confidence: "high",
-        detail: p.detail,
-        checked_at: new Date().toISOString(),
-      });
-    }
   }
   // 2. Email Intelligence
   else if (searchType === "email") {
     const emailData = await analyzeEmail(rawQuery);
     queryLabel = emailData.email;
+    entities = emailData.entities;
+
+    for (const p of emailData.platforms) {
+      results.push({
+        provider: p.name,
+        category: p.category.toLowerCase().includes("code") ? "code" : (p.category.toLowerCase().includes("messag") || p.category.toLowerCase().includes("social") ? "social" : "identity"),
+        profile_url: p.url,
+        domain: p.icon,
+        status: p.status === "verified" ? "candidate" : p.status,
+        http_status: 200,
+        confidence: "high",
+        identity_name: p.identityName,
+        identifier_display: p.identifierDisplay || `Email: ${emailData.email}`,
+        fields_count: p.fieldsCount || 1,
+        extra_fields: p.extraFields,
+        detail: p.detail,
+        checked_at: new Date().toISOString(),
+      });
+    }
 
     results.push({
       provider: `Mail Provider (${emailData.provider})`,
@@ -404,28 +447,30 @@ app.post("/api/v1/search/username", async (c) => {
       status: "candidate",
       http_status: 200,
       confidence: "high",
+      identifier_display: `@${emailData.domain}`,
+      fields_count: 3,
+      extra_fields: {
+        "Mail Domain": emailData.domain,
+        "Service Type": emailData.isFreeProvider ? "Public Consumer Webmail" : "Enterprise / Private Exchange",
+        "Burner Risk": emailData.isDisposable ? "HIGH (Disposable Domain)" : "Clean"
+      },
       detail: `Active Mail Domain: @${emailData.domain}. Type: ${emailData.isFreeProvider ? "Free Public Webmail" : "Enterprise / Private Domain"}. Handle: ${emailData.username}`,
       checked_at: new Date().toISOString(),
     });
-
-    for (const p of emailData.pivots) {
-      results.push({
-        provider: p.name,
-        category: p.category.toLowerCase().includes("code") ? "code" : (p.category.toLowerCase().includes("sec") ? "identity" : "identity"),
-        profile_url: p.url,
-        domain: p.icon,
-        status: p.status === "verified" ? "candidate" : p.status,
-        http_status: 200,
-        confidence: "medium",
-        detail: p.detail,
-        checked_at: new Date().toISOString(),
-      });
-    }
   }
   // 3. Domain & Infrastructure OSINT
   else if (searchType === "domain") {
     const domainData = await analyzeDomain(rawQuery);
     queryLabel = domainData.domain;
+    entities = {
+      names: [domainData.domain],
+      profile_pictures: [`https://www.google.com/s2/favicons?domain=${encodeURIComponent(domainData.domain)}&sz=64`],
+      banners: [],
+      usernames: [],
+      emails: domainData.mailServers.slice(0, 2),
+      phones: [],
+      first_seen: "Cloudflare Edge",
+    };
     results = domainData.evidence.map((e) => ({
       provider: e.provider,
       category: e.category,
@@ -438,7 +483,7 @@ app.post("/api/v1/search/username", async (c) => {
       checked_at: e.checked_at,
     }));
   }
-  // 4. Username Intelligence across 40+ Sources
+  // 4. Username Intelligence across 34+ Sources
   else {
     let username: string;
     try {
@@ -449,6 +494,15 @@ app.post("/api/v1/search/username", async (c) => {
     queryLabel = username;
     const depth = parseInt(body.depth || "0", 10) || 0;
     results = await searchUsername(username, depth);
+    entities = {
+      names: [username],
+      profile_pictures: [`https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(username)}`],
+      banners: [],
+      usernames: [username],
+      emails: [],
+      phones: [],
+      first_seen: "Public Registry",
+    };
   }
 
   const candidates = results.filter((r) => r.status === "candidate").length;
@@ -469,6 +523,7 @@ app.post("/api/v1/search/username", async (c) => {
       query_type: searchType,
       query_value: queryLabel,
       created_at: createdAt,
+      entities,
       summary: {
         total: results.length,
         candidates,
