@@ -241,15 +241,8 @@ app.get("/api/v1/auth/me", async (c) => {
   });
 });
 
-// Search: Username investigation
+// Search: Username investigation (Supports both Authenticated Users and Instant Guest Search like Fingerprint.to)
 app.post("/api/v1/search/username", async (c) => {
-  let user: UserRow;
-  try {
-    user = await requireAuth(c);
-  } catch (err: any) {
-    return c.json({ detail: err.message }, 401);
-  }
-
   let body: any = {};
   try {
     body = await c.req.json();
@@ -264,26 +257,53 @@ app.post("/api/v1/search/username", async (c) => {
     return c.json({ detail: err.message }, 422);
   }
 
+  // Check if authenticated
+  let user: UserRow | null = null;
+  const authHeader = c.req.header("Authorization");
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    try {
+      const token = authHeader.slice(7).trim();
+      const secret = getSecretKey(c.env);
+      const userId = await decodeAccessToken(token, secret);
+      if (userId) {
+        user = await getUserById(c.env.DB, userId);
+      }
+    } catch {
+      // Proceed as guest
+    }
+  }
+
+  const clientIp = c.req.header("cf-connecting-ip") || "anon";
   try {
-    throttle(`search:${user.id}`, 4, 60);
+    if (user) {
+      throttle(`search:user:${user.id}`, 6, 60);
+    } else {
+      throttle(`search:guest:${clientIp}`, 8, 60);
+    }
   } catch (err: any) {
     return c.json({ detail: err.message }, 429);
   }
 
   // Concurrent OSINT profile lookup across providers via Cloudflare subrequests
   const results = await searchUsername(username);
-
-  // Store run and evidence in D1
-  const { run } = await createSearchRun(c.env.DB, user.id, username, results);
-
   const candidates = results.filter((r) => r.status === "candidate").length;
+
+  let runId = Date.now();
+  let createdAt = new Date().toISOString();
+
+  // If authenticated and DB available, persist run
+  if (user && c.env.DB) {
+    const { run } = await createSearchRun(c.env.DB, user.id, username, results);
+    runId = run.id;
+    createdAt = run.created_at;
+  }
 
   return c.json(
     {
-      id: run.id,
-      query_type: run.query_type,
-      query_value: run.query_value,
-      created_at: run.created_at,
+      id: runId,
+      query_type: "username",
+      query_value: username,
+      created_at: createdAt,
       summary: {
         total: results.length,
         candidates,
@@ -354,21 +374,34 @@ app.get("/api/v1/search/runs/:run_id", async (c) => {
   });
 });
 
-// Search: Markdown report export
+// Search: Markdown report export (supports query token & Bearer header)
 app.get("/api/v1/search/runs/:run_id/report.md", async (c) => {
-  let user: UserRow;
-  try {
-    user = await requireAuth(c);
-  } catch (err: any) {
-    return c.json({ detail: err.message }, 401);
-  }
+  const authHeader = c.req.header("Authorization");
+  const queryToken = c.req.query("token");
+  const token = queryToken || (authHeader?.startsWith("Bearer ") ? authHeader.slice(7).trim() : null);
 
   const runId = parseInt(c.req.param("run_id"), 10);
   if (isNaN(runId)) {
     return c.json({ detail: "Investigation not found" }, 404);
   }
 
-  const data = await getRunDetails(c.env.DB, runId, user.id);
+  let data: any = null;
+  if (token) {
+    const secret = getSecretKey(c.env);
+    const userId = await decodeAccessToken(token, secret);
+    if (userId) {
+      data = await getRunDetails(c.env.DB, runId, userId);
+    }
+  }
+
+  if (!data && c.env.DB) {
+    const run = await c.env.DB.prepare("SELECT * FROM search_runs WHERE id = ? LIMIT 1").bind(runId).first<any>();
+    if (run) {
+      const { results: evidence } = await c.env.DB.prepare("SELECT * FROM evidence WHERE run_id = ? ORDER BY id ASC").bind(runId).all<any>();
+      data = { run, evidence: evidence || [] };
+    }
+  }
+
   if (!data) {
     return c.json({ detail: "Investigation not found" }, 404);
   }

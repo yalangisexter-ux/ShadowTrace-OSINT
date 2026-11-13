@@ -3,213 +3,922 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="theme-color" content="#080d19">
-<title>ShadowTrace OSINT</title>
+<meta name="theme-color" content="#070b14">
+<title>ShadowTrace // OSINT Reverse Footprint Discovery</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
-:root{color-scheme:dark;--bg:#080d19;--panel:#0f1a2b;--line:#26364d;--muted:#91a2bb;--cyan:#5de1e6;--white:#eef5ff;--green:#4ade80;--amber:#fbbf24;--red:#f87171}
-*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 70% 0,#16324b 0,transparent 45%),var(--bg);color:var(--white);font:15px/1.5 Inter,system-ui,sans-serif}
-header{padding:18px clamp(16px,4vw,48px);border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:12px}
-.brand{font-weight:800;letter-spacing:.1em}.brand span{color:var(--cyan)}
-main{max-width:1100px;margin:40px auto;padding:0 18px}
-.eyebrow{color:var(--cyan);letter-spacing:.18em;font-size:11px;font-weight:700}
-h1{font-size:clamp(32px,5vw,52px);line-height:1.05;margin:10px 0 8px}
-p.lead{color:var(--muted);max-width:560px}
-.panel{background:linear-gradient(145deg,#142239,#0d1626);border:1px solid var(--line);border-radius:16px;padding:22px;margin-top:22px;box-shadow:0 18px 50px #0005}
-label{display:block;color:#b7c8dc;margin-bottom:7px;font-size:12px;letter-spacing:.04em}
-input{width:100%;background:#080f1c;border:1px solid #354964;border-radius:10px;padding:13px 14px;color:white;font-size:15px;outline:none}
-input:focus{border-color:var(--cyan)}
-button{margin-top:12px;background:var(--cyan);color:#06121d;border:0;border-radius:10px;padding:12px 18px;font-weight:800;cursor:pointer;font-size:14px}
-button.secondary{background:#24364e;color:white;margin-left:8px}
-button:disabled{opacity:.55;cursor:not-allowed}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-.hidden{display:none}
-.result{padding:14px 0;border-top:1px solid var(--line)}
-.result a{color:var(--cyan);overflow-wrap:anywhere;font-size:13px}
-.pill{font-size:11px;padding:3px 9px;border-radius:20px;background:#24364e;color:#c5d8ed;margin-left:8px}
-.pill.candidate{background:#14532d;color:#86efac}
-.pill.not_found{background:#3f1d1d;color:#fca5a5}
-.pill.inconclusive{background:#422006;color:#fcd34d}
-.notice{font-size:12px;border-left:3px solid #e3b75b;padding:10px 14px;background:#332a1b;color:#e8d7ad;margin-top:18px}
-#message,#searchMessage{min-height:22px;color:#f0c779;font-size:13px}
-.muted{font-size:12px;color:var(--muted)}
-.history-item{padding:10px 0;border-top:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:10px;cursor:pointer}
-.history-item:hover{color:var(--cyan)}
-.summary{display:flex;gap:14px;flex-wrap:wrap;margin:12px 0;font-size:13px}
-.summary span{background:#1a2a3d;padding:4px 10px;border-radius:8px}
-@media(max-width:680px){.grid{grid-template-columns:1fr}header{padding:14px}}
+:root {
+  --bg: #070b14;
+  --panel: #0e1626;
+  --panel-hover: #141f36;
+  --border: #1e2d47;
+  --border-focus: #00f2fe;
+  --cyan: #00f2fe;
+  --cyan-glow: rgba(0, 242, 254, 0.25);
+  --green: #10b981;
+  --green-glow: rgba(16, 185, 129, 0.25);
+  --red: #f43f5e;
+  --amber: #f59e0b;
+  --text: #f1f5f9;
+  --muted: #8494ab;
+  --font: 'Plus Jakarta Sans', system-ui, sans-serif;
+  --mono: 'JetBrains Mono', monospace;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: radial-gradient(circle at 50% 0%, #112240 0%, var(--bg) 60%);
+  color: var(--text);
+  font-family: var(--font);
+  min-height: 100vh;
+  line-height: 1.5;
+  overflow-x: hidden;
+}
+header {
+  border-bottom: 1px solid var(--border);
+  padding: 16px 24px;
+  background: rgba(7, 11, 20, 0.8);
+  backdrop-filter: blur(16px);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  font-size: 17px;
+}
+.brand svg { width: 24px; height: 24px; fill: var(--cyan); }
+.brand span { color: var(--cyan); }
+.header-actions { display: flex; align-items: center; gap: 12px; }
+.badge-live {
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  color: var(--green);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.pulse {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 8px var(--green);
+  animation: pulseAnim 2s infinite;
+}
+@keyframes pulseAnim { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.4; transform: scale(0.85); } }
+
+button {
+  font-family: var(--font);
+  cursor: pointer;
+  border: 0;
+  border-radius: 8px;
+  padding: 9px 16px;
+  font-size: 13px;
+  font-weight: 700;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+button.primary {
+  background: linear-gradient(135deg, #00f2fe, #4facfe);
+  color: #05101a;
+  box-shadow: 0 4px 16px var(--cyan-glow);
+}
+button.primary:hover {
+  filter: brightness(1.1);
+  box-shadow: 0 6px 22px var(--cyan-glow);
+}
+button.outline {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+button.outline:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: var(--muted);
+}
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+main {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 40px 20px 80px;
+}
+.hero {
+  text-align: center;
+  max-width: 760px;
+  margin: 0 auto 36px;
+}
+.hero-tag {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.2em;
+  color: var(--cyan);
+  text-transform: uppercase;
+  margin-bottom: 12px;
+  display: inline-block;
+}
+.hero h1 {
+  font-size: clamp(34px, 5.5vw, 56px);
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  margin-bottom: 16px;
+}
+.hero h1 span {
+  background: linear-gradient(135deg, #00f2fe, #38bdf8, #818cf8);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.hero p {
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1.6;
+}
+
+.search-box {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 12px;
+  max-width: 780px;
+  margin: 0 auto 20px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+  transition: border-color 0.2s;
+}
+.search-box:focus-within {
+  border-color: var(--border-focus);
+  box-shadow: 0 0 30px var(--cyan-glow);
+}
+.search-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  padding-bottom: 8px;
+}
+.tab-btn {
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 6px;
+}
+.tab-btn.active {
+  background: rgba(0, 242, 254, 0.12);
+  color: var(--cyan);
+}
+.input-row {
+  display: flex;
+  gap: 10px;
+}
+.input-row input {
+  flex: 1;
+  background: transparent;
+  border: 0;
+  outline: none;
+  font-size: 17px;
+  color: var(--text);
+  font-family: var(--mono);
+  padding: 8px 12px;
+}
+.input-row input::placeholder { color: #475569; }
+.search-presets {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 14px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.preset-chip {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 3px 10px;
+  color: #cbd5e1;
+  font-family: var(--mono);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.preset-chip:hover {
+  background: rgba(0, 242, 254, 0.1);
+  border-color: var(--cyan);
+  color: var(--cyan);
+}
+
+/* Progress bar */
+.scan-progress {
+  max-width: 780px;
+  margin: 20px auto 0;
+  background: rgba(14, 22, 38, 0.9);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+}
+.progress-bar-bg {
+  height: 6px;
+  background: #1e293b;
+  border-radius: 3px;
+  overflow: hidden;
+  margin-top: 8px;
+}
+.progress-bar-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #00f2fe, #10b981);
+  transition: width 0.3s ease;
+  animation: pulseBar 1.5s infinite;
+}
+
+/* Metrics bar */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin: 32px 0 24px;
+}
+.stat-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+}
+.stat-title {
+  font-size: 11px;
+  font-family: var(--mono);
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+.stat-value {
+  font-size: 26px;
+  font-weight: 800;
+  margin-top: 4px;
+  font-family: var(--mono);
+}
+.stat-value.green { color: var(--green); text-shadow: 0 0 16px var(--green-glow); }
+.stat-value.red { color: #f87171; }
+.stat-value.amber { color: var(--amber); }
+
+/* Filter bar & Export toolbar */
+.toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+.filter-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.filter-btn {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.filter-btn.active {
+  background: rgba(0, 242, 254, 0.12);
+  border-color: var(--cyan);
+  color: var(--cyan);
+}
+.export-group { display: flex; gap: 8px; }
+
+/* Result Cards Grid */
+.results-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+  gap: 16px;
+}
+.card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 18px;
+  transition: all 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+.card:hover {
+  background: var(--panel-hover);
+  border-color: #334155;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+.card.match {
+  border-left: 3px solid var(--green);
+  box-shadow: inset 0 0 20px rgba(16, 185, 129, 0.03);
+}
+.card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+.provider-info { display: flex; align-items: center; gap: 10px; }
+.provider-name { font-weight: 700; font-size: 15px; }
+.cat-pill {
+  font-size: 10px;
+  font-family: var(--mono);
+  background: rgba(255, 255, 255, 0.06);
+  padding: 2px 7px;
+  border-radius: 4px;
+  color: #94a3b8;
+  text-transform: uppercase;
+}
+.status-pill {
+  font-size: 11px;
+  font-family: var(--mono);
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.status-pill.candidate {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+.status-pill.not_found {
+  background: rgba(244, 63, 94, 0.1);
+  color: #fda4af;
+  border: 1px solid rgba(244, 63, 94, 0.2);
+}
+.status-pill.inconclusive {
+  background: rgba(245, 158, 11, 0.1);
+  color: #fcd34d;
+  border: 1px solid rgba(245, 158, 11, 0.2);
+}
+.card-detail {
+  font-size: 12.5px;
+  color: #94a3b8;
+  margin-bottom: 14px;
+  line-height: 1.4;
+}
+.card-link {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--cyan);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.card-link:hover { text-decoration: underline; }
+.card-meta {
+  font-size: 11px;
+  color: #64748b;
+  font-family: var(--mono);
+  margin-top: 10px;
+  display: flex;
+  justify-content: space-between;
+}
+
+/* Auth Modal */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+}
+.modal {
+  background: #0f172a;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  width: 90%;
+  max-width: 440px;
+  padding: 28px;
+  box-shadow: 0 25px 60px rgba(0,0,0,0.8);
+}
+.modal h2 { font-size: 20px; font-weight: 800; margin-bottom: 6px; }
+.modal p.desc { color: var(--muted); font-size: 13px; margin-bottom: 20px; }
+.field { margin-bottom: 14px; }
+.field label { display: block; font-size: 11px; font-family: var(--mono); color: #94a3b8; margin-bottom: 6px; text-transform: uppercase; }
+.field input {
+  width: 100%;
+  background: #070d19;
+  border: 1px solid #243550;
+  border-radius: 8px;
+  padding: 11px 14px;
+  color: var(--text);
+  font-size: 14px;
+  outline: none;
+}
+.field input:focus { border-color: var(--cyan); }
+.modal-btn-row { display: flex; gap: 10px; margin-top: 18px; }
+.hidden { display: none !important; }
+
+/* History drawer */
+.history-section {
+  margin-top: 40px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+}
+.history-item {
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+}
+.history-item:hover { color: var(--cyan); }
+
+@media (max-width: 768px) {
+  .results-grid { grid-template-columns: 1fr; }
+  .input-row { flex-direction: column; }
+  .toolbar { flex-direction: column; align-items: stretch; }
+}
 </style>
 </head>
 <body>
+
 <header>
-  <div class="brand">SHADOW<span>TRACE</span> <small style="color:#91a2bb;font-weight:500"> / OSINT</small></div>
-  <div class="muted" id="providerCount">PUBLIC-SOURCE</div>
+  <div class="brand">
+    <svg viewBox="0 0 24 24"><path d="M17.81 4.87c-.39-.18-.86-.01-1.04.38-.9 1.94-2.85 3.19-5.02 3.19s-4.12-1.25-5.02-3.19c-.18-.39-.65-.56-1.04-.38-.39.18-.56.65-.38 1.04 1.13 2.43 3.58 4.03 6.44 4.03s5.31-1.6 6.44-4.03c.18-.39.01-.86-.38-1.04zm-5.81 6.13c-2.76 0-5 2.24-5 5v3c0 .55.45 1 1 1s1-.45 1-1v-3c0-1.65 1.35-3 3-3s3 1.35 3 3v3c0 .55.45 1 1 1s1-.45 1-1v-3c0-2.76-2.24-5-5-5z"/></svg>
+    SHADOW<span>TRACE</span>
+  </div>
+  <div class="header-actions">
+    <div class="badge-live"><div class="pulse"></div> <span id="sourcesCount">21 SOURCES ACTIVE</span></div>
+    <div id="authActions">
+      <button class="outline" onclick="openAuthModal()">Cloud Sync / Sign In</button>
+    </div>
+  </div>
 </header>
+
 <main>
-  <div class="eyebrow">INVESTIGATE WITH EVIDENCE</div>
-  <h1>Public username<br><span style="color:var(--cyan)">intelligence.</span></h1>
-  <p class="lead">Search public profile pages across curated sources. Every result includes source URL, status, confidence and timestamp.</p>
+  <div class="hero">
+    <div class="hero-tag">// Edge-Native OSINT Intelligence</div>
+    <h1>Search public digital<br><span>footprints instantly.</span></h1>
+    <p>Discover candidate accounts, verified profiles, and public source records across 20+ networks concurrently via Cloudflare Workers.</p>
+  </div>
 
-  <section class="panel" id="auth">
-    <div class="grid">
-      <div><label for="email">EMAIL</label><input id="email" type="email" autocomplete="email" placeholder="analyst@example.com"></div>
-      <div><label for="password">PASSWORD (12+ CHARACTERS)</label><input id="password" type="password" autocomplete="current-password" placeholder="Use a strong password"></div>
+  <div class="search-box">
+    <div class="search-tabs">
+      <button class="tab-btn active" onclick="setSearchType('username')">👤 Username / Handle</button>
+      <button class="tab-btn" onclick="setSearchType('email')">✉️ Email (Reverse)</button>
+      <button class="tab-btn" onclick="setSearchType('phone')">📞 Phone Discovery</button>
     </div>
-    <button onclick="authenticate('login')">Sign in</button>
-    <button class="secondary" onclick="authenticate('register')">Create account</button>
-    <p id="message"></p>
-  </section>
+    <div class="input-row">
+      <input id="searchInput" placeholder="Enter target handle (e.g. octocat)..." maxlength="30" autofocus onkeydown="if(event.key==='Enter') executeSearch()">
+      <button class="primary" id="searchBtn" onclick="executeSearch()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        Investigate
+      </button>
+    </div>
+  </div>
 
-  <section class="panel hidden" id="workspace">
-    <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap">
-      <div>
-        <div class="eyebrow">NEW INVESTIGATION</div>
-        <h2 style="margin:4px 0 0">Username discovery</h2>
+  <div class="search-presets">
+    <span>Quick demo:</span>
+    <span class="preset-chip" onclick="quickFill('octocat')">octocat</span>
+    <span class="preset-chip" onclick="quickFill('torvalds')">torvalds</span>
+    <span class="preset-chip" onclick="quickFill('defunkt')">defunkt</span>
+    <span class="preset-chip" onclick="quickFill('satya')">satya</span>
+  </div>
+
+  <!-- Real-time Progress Bar -->
+  <div id="scanProgress" class="scan-progress hidden">
+    <div style="display:flex;justify-content:space-between;font-size:12px;font-family:var(--mono);">
+      <span id="scanStatusText">Scanning 21 public sources across global edge...</span>
+      <span id="scanPercent" style="color:var(--cyan)">0%</span>
+    </div>
+    <div class="progress-bar-bg">
+      <div id="scanFill" class="progress-bar-fill"></div>
+    </div>
+  </div>
+
+  <!-- Results Section -->
+  <div id="resultsArea" class="hidden">
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-title">Candidates Matched</div>
+        <div class="stat-value green" id="statMatches">0</div>
       </div>
-      <button class="secondary" onclick="logout()">Sign out</button>
+      <div class="stat-card">
+        <div class="stat-title">Sources Checked</div>
+        <div class="stat-value" id="statTotal">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-title">Not Found (404)</div>
+        <div class="stat-value red" id="statNotFound">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-title">Inconclusive / WAF</div>
+        <div class="stat-value amber" id="statInconclusive">0</div>
+      </div>
     </div>
-    <label for="username" style="margin-top:16px">PUBLIC USERNAME</label>
-    <input id="username" maxlength="30" placeholder="e.g. octocat">
-    <button id="runBtn" onclick="runSearch()">Run public-source checks</button>
-    <p id="searchMessage"></p>
-    <div id="summary" class="summary hidden"></div>
-    <div id="results"></div>
 
-    <div style="margin-top:28px">
-      <div class="eyebrow">RECENT INVESTIGATIONS</div>
-      <div id="history"></div>
+    <div class="toolbar">
+      <div class="filter-chips">
+        <button class="filter-btn active" onclick="applyFilter('all')">All (<span id="countAll">0</span>)</button>
+        <button class="filter-btn" onclick="applyFilter('candidate')">⭐ Matches Only (<span id="countMatch">0</span>)</button>
+        <button class="filter-btn" onclick="applyFilter('code')">Code</button>
+        <button class="filter-btn" onclick="applyFilter('social')">Social</button>
+        <button class="filter-btn" onclick="applyFilter('creative')">Creative</button>
+        <button class="filter-btn" onclick="applyFilter('identity')">Identity</button>
+      </div>
+
+      <div class="export-group">
+        <button class="outline" onclick="exportData('markdown')">📄 Markdown</button>
+        <button class="outline" onclick="exportData('json')">{ } JSON</button>
+        <button class="outline" onclick="exportData('csv')">📊 CSV</button>
+      </div>
     </div>
-  </section>
 
-  <div class="notice">Use only for lawful, authorized research. Candidate profiles are not proof of identity. ShadowTrace checks public pages only — no private accounts, no breached data.</div>
+    <div id="cardsGrid" class="results-grid"></div>
+  </div>
+
+  <!-- History Section -->
+  <div id="historySection" class="history-section hidden">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <h3 style="font-size:15px;font-weight:700;">Recent Saved Investigations (Cloudflare D1)</h3>
+      <span style="font-size:11px;color:var(--muted)">Syncing with Cloudflare</span>
+    </div>
+    <div id="historyList"></div>
+  </div>
 </main>
+
+<!-- Auth Modal -->
+<div id="authModal" class="modal-overlay hidden" onclick="if(event.target===this) closeAuthModal()">
+  <div class="modal">
+    <h2 id="modalTitle">Cloud Sync Sign In</h2>
+    <p class="desc">Save investigation history permanently to Cloudflare D1 across sessions.</p>
+    
+    <div class="field">
+      <label for="authEmail">Email Address</label>
+      <input id="authEmail" type="email" placeholder="analyst@agency.com">
+    </div>
+    <div class="field">
+      <label for="authPassword">Password (12+ Characters)</label>
+      <input id="authPassword" type="password" placeholder="••••••••••••">
+    </div>
+
+    <div id="authMsg" style="font-size:12px;color:#f87171;min-height:18px;margin-bottom:8px;"></div>
+
+    <div class="modal-btn-row">
+      <button class="primary" style="flex:1" onclick="submitAuth('login')">Sign In</button>
+      <button class="outline" style="flex:1" onclick="submitAuth('register')">Create Account</button>
+    </div>
+  </div>
+</div>
+
 <script>
 let token = localStorage.getItem("st_token");
-const el = id => document.getElementById(id);
+let userEmail = localStorage.getItem("st_email");
+let currentResults = [];
+let currentRunId = null;
+let currentQuery = "";
+let activeFilter = "all";
 
-function showWorkspace() {
-  el("auth").classList.toggle("hidden", !!token);
-  el("workspace").classList.toggle("hidden", !token);
-  if (token) loadHistory();
-}
+const el = (id) => document.getElementById(id);
 
-async function request(path, body) {
-  const r = await fetch(path, {
-    method: body ? "POST" : "GET",
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: "Bearer " + token } : {})
-    },
-    ...(body ? { body: JSON.stringify(body) } : {})
-  });
-  let d = {};
-  try { d = await r.json(); } catch {}
-  if (!r.ok) throw Error(typeof d.detail === "string" ? d.detail : (d.detail?.[0]?.msg || "Request failed (" + r.status + ")"));
-  return d;
-}
-
-async function authenticate(mode) {
-  el("message").textContent = "";
-  try {
-    const d = await request("/api/v1/auth/" + mode, { email: el("email").value, password: el("password").value });
-    token = d.access_token;
-    localStorage.setItem("st_token", token);
-    showWorkspace();
-  } catch (e) {
-    el("message").textContent = e.message;
+function updateAuthUI() {
+  const container = el("authActions");
+  if (token && userEmail) {
+    container.innerHTML = `
+      <span style="font-size:12px;color:var(--muted);font-family:var(--mono);">${escapeHtml(userEmail)}</span>
+      <button class="outline" style="padding:6px 12px;font-size:12px;" onclick="signOut()">Sign Out</button>
+    `;
+    el("historySection").classList.remove("hidden");
+    loadHistory();
+  } else {
+    container.innerHTML = `<button class="outline" onclick="openAuthModal()">Cloud Sync / Sign In</button>`;
+    el("historySection").classList.add("hidden");
   }
 }
 
-function logout() {
-  token = null;
-  localStorage.removeItem("st_token");
-  el("results").innerHTML = "";
-  el("summary").classList.add("hidden");
-  el("history").innerHTML = "";
-  showWorkspace();
+function openAuthModal() {
+  el("authMsg").textContent = "";
+  el("authModal").classList.remove("hidden");
+}
+function closeAuthModal() {
+  el("authModal").classList.add("hidden");
 }
 
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
-}
+async function submitAuth(mode) {
+  const email = el("authEmail").value.trim();
+  const password = el("authPassword").value;
+  el("authMsg").textContent = "";
 
-function renderEvidence(evidence) {
-  return evidence
-    .sort((a, b) => (a.status === "candidate" ? 0 : 1) - (b.status === "candidate" ? 0 : 1) || a.provider.localeCompare(b.provider))
-    .map(x => `
-      <div class="result">
-        <strong>${escapeHtml(x.provider)}</strong>
-        <span class="pill ${escapeHtml(x.status)}">${escapeHtml(x.status)} · ${escapeHtml(x.confidence)}</span>
-        ${x.category ? `<span class="pill">${escapeHtml(x.category)}</span>` : ""}
-        <p>${escapeHtml(x.detail)}</p>
-        <a target="_blank" rel="noopener noreferrer" href="${escapeHtml(x.profile_url)}">${escapeHtml(x.profile_url)}</a>
-        <p class="muted">HTTP ${x.http_status ?? "—"} · ${escapeHtml(x.checked_at)}</p>
-      </div>`).join("");
-}
+  if (!email || !password) {
+    el("authMsg").textContent = "Please provide both email and password.";
+    return;
+  }
+  if (password.length < 12) {
+    el("authMsg").textContent = "Password must be at least 12 characters.";
+    return;
+  }
 
-async function runSearch() {
-  const btn = el("runBtn");
-  btn.disabled = true;
-  el("searchMessage").textContent = "Checking curated public profile sources…";
-  el("results").innerHTML = "";
-  el("summary").classList.add("hidden");
   try {
-    const d = await request("/api/v1/search/username", { username: el("username").value });
-    el("searchMessage").textContent = `Investigation #${d.id}`;
-    el("summary").classList.remove("hidden");
-    el("summary").innerHTML = `
-      <span>Total sources: ${d.summary.total}</span>
-      <span>Candidates: ${d.summary.candidates}</span>
-      <span><a href="/api/v1/search/runs/${d.id}/report.md" target="_blank" style="color:var(--cyan)">Download report</a></span>`;
-    el("results").innerHTML = renderEvidence(d.evidence);
-    loadHistory();
-  } catch (e) {
-    el("searchMessage").textContent = e.message;
+    const res = await fetch("/api/v1/auth/" + mode, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password })
+    });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.detail || "Authentication failed");
+    
+    token = d.access_token;
+    userEmail = email;
+    localStorage.setItem("st_token", token);
+    localStorage.setItem("st_email", userEmail);
+    closeAuthModal();
+    updateAuthUI();
+  } catch (err) {
+    el("authMsg").textContent = err.message;
+  }
+}
+
+function signOut() {
+  token = null;
+  userEmail = null;
+  localStorage.removeItem("st_token");
+  localStorage.removeItem("st_email");
+  updateAuthUI();
+}
+
+function setSearchType(type) {
+  document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+  event.target.classList.add("active");
+  const input = el("searchInput");
+  if (type === "username") {
+    input.placeholder = "Enter target handle (e.g. octocat)...";
+  } else if (type === "email") {
+    input.placeholder = "Enter email address to extract handle (e.g. user@domain.com)...";
+  } else if (type === "phone") {
+    input.placeholder = "Enter phone number...";
+  }
+}
+
+function quickFill(name) {
+  el("searchInput").value = name;
+  executeSearch();
+}
+
+async function executeSearch() {
+  let val = el("searchInput").value.trim();
+  if (val.includes("@")) {
+    val = val.split("@")[0]; // extract handle from email
+  }
+  if (!val) return;
+
+  currentQuery = val;
+  const btn = el("searchBtn");
+  btn.disabled = true;
+
+  el("scanProgress").classList.remove("hidden");
+  el("resultsArea").classList.add("hidden");
+  el("scanFill").style.width = "10%";
+  el("scanPercent").textContent = "15%";
+
+  let progressInterval = setInterval(() => {
+    let current = parseInt(el("scanPercent").textContent);
+    if (current < 90) {
+      current += Math.floor(Math.random() * 15) + 5;
+      el("scanFill").style.width = current + "%";
+      el("scanPercent").textContent = current + "%";
+    }
+  }, 350);
+
+  try {
+    const res = await fetch("/api/v1/search/username", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { "Authorization": "Bearer " + token } : {})
+      },
+      body: JSON.stringify({ username: val })
+    });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.detail || "Search request failed");
+
+    clearInterval(progressInterval);
+    el("scanFill").style.width = "100%";
+    el("scanPercent").textContent = "100%";
+
+    setTimeout(() => {
+      el("scanProgress").classList.add("hidden");
+      renderSearchResults(d);
+    }, 300);
+
+    if (token) loadHistory();
+  } catch (err) {
+    clearInterval(progressInterval);
+    el("scanProgress").classList.add("hidden");
+    alert("Investigation error: " + err.message);
   } finally {
     btn.disabled = false;
   }
 }
 
+function renderSearchResults(data) {
+  currentResults = data.evidence || [];
+  currentRunId = data.id;
+
+  const matches = currentResults.filter(e => e.status === "candidate").length;
+  const notFound = currentResults.filter(e => e.status === "not_found").length;
+  const inconclusive = currentResults.filter(e => e.status === "inconclusive").length;
+
+  el("statMatches").textContent = matches;
+  el("statTotal").textContent = currentResults.length;
+  el("statNotFound").textContent = notFound;
+  el("statInconclusive").textContent = inconclusive;
+
+  el("countAll").textContent = currentResults.length;
+  el("countMatch").textContent = matches;
+
+  el("resultsArea").classList.remove("hidden");
+  renderCards();
+}
+
+function applyFilter(cat) {
+  activeFilter = cat;
+  document.querySelectorAll(".filter-btn").forEach(b => b.classList.remove("active"));
+  event.target.classList.add("active");
+  renderCards();
+}
+
+function renderCards() {
+  const container = el("cardsGrid");
+  let filtered = currentResults;
+
+  if (activeFilter === "candidate") {
+    filtered = currentResults.filter(e => e.status === "candidate");
+  } else if (activeFilter !== "all") {
+    filtered = currentResults.filter(e => e.category === activeFilter);
+  }
+
+  // Sort candidate matches first, then alphabetically
+  filtered.sort((a, b) => {
+    const aMatch = a.status === "candidate" ? 0 : 1;
+    const bMatch = b.status === "candidate" ? 0 : 1;
+    if (aMatch !== bMatch) return aMatch - bMatch;
+    return a.provider.localeCompare(b.provider);
+  });
+
+  if (filtered.length === 0) {
+    container.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--muted)">No records matched this filter.</div>`;
+    return;
+  }
+
+  container.innerHTML = filtered.map(item => `
+    <div class="card ${item.status === 'candidate' ? 'match' : ''}">
+      <div>
+        <div class="card-top">
+          <div class="provider-info">
+            <img src="https://www.google.com/s2/favicons?domain=${encodeURIComponent(item.domain || item.provider.toLowerCase() + '.com')}&sz=32" width="18" height="18" style="border-radius:4px;" onerror="this.style.display='none'">
+            <div class="provider-name">${escapeHtml(item.provider)}</div>
+          </div>
+          <span class="cat-pill">${escapeHtml(item.category || 'web')}</span>
+        </div>
+        <div style="margin-bottom:8px;">
+          <span class="status-pill ${item.status}">
+            ${item.status === 'candidate' ? '⭐ MATCH FOUND' : (item.status === 'not_found' ? '✕ NOT FOUND' : '⚠️ RESTRICTED')}
+          </span>
+        </div>
+        <div class="card-detail">${escapeHtml(item.detail)}</div>
+      </div>
+      <div>
+        <a class="card-link" href="${escapeHtml(item.profile_url)}" target="_blank" rel="noopener noreferrer">
+          ${escapeHtml(item.profile_url)}
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+        </a>
+        <div class="card-meta">
+          <span>HTTP ${item.http_status ?? '—'}</span>
+          <span>Confidence: ${item.confidence}</span>
+        </div>
+      </div>
+    </div>
+  `).join("");
+}
+
+async function exportData(format) {
+  if (!currentResults.length) return;
+
+  if (format === "markdown") {
+    // Generate markdown on client or via API
+    const lines = [
+      `# ShadowTrace OSINT Investigation Report`,
+      `**Query:** \`${currentQuery}\``,
+      `**Run ID:** ${currentRunId}`,
+      `**Timestamp:** ${new Date().toISOString()}`,
+      `**Candidates Found:** ${currentResults.filter(e => e.status === "candidate").length} / ${currentResults.length}`,
+      ``,
+      `## Evidence Findings`,
+      ``
+    ];
+    currentResults.forEach(e => {
+      lines.push(`### ${e.provider} (${e.category})`);
+      lines.push(`- Status: **${e.status.toUpperCase()}** (Confidence: ${e.confidence})`);
+      lines.push(`- URL: ${e.profile_url}`);
+      lines.push(`- HTTP Status: ${e.http_status || '—'}`);
+      lines.push(`- Detail: ${e.detail}`);
+      lines.push(``);
+    });
+    triggerDownload(`shadowtrace_${currentQuery}.md`, lines.join("\n"), "text/markdown");
+  } else if (format === "json") {
+    const payload = JSON.stringify({ query: currentQuery, timestamp: new Date().toISOString(), evidence: currentResults }, null, 2);
+    triggerDownload(`shadowtrace_${currentQuery}.json`, payload, "application/json");
+  } else if (format === "csv") {
+    const rows = [["Provider", "Category", "Status", "Confidence", "HTTP Status", "URL", "Detail"]];
+    currentResults.forEach(e => {
+      rows.push([e.provider, e.category, e.status, e.confidence, e.http_status ?? "", e.profile_url, `"${(e.detail||'').replace(/"/g, '""')}"`]);
+    });
+    const csvContent = rows.map(r => r.join(",")).join("\n");
+    triggerDownload(`shadowtrace_${currentQuery}.csv`, csvContent, "text/csv");
+  }
+}
+
+function triggerDownload(filename, text, type) {
+  const blob = new Blob([text], { type: type + ";charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 async function loadHistory() {
+  if (!token) return;
   try {
-    const runs = await request("/api/v1/search/runs");
+    const res = await fetch("/api/v1/search/runs", {
+      headers: { "Authorization": "Bearer " + token }
+    });
+    if (!res.ok) return;
+    const runs = await res.json();
+    const list = el("historyList");
     if (!runs.length) {
-      el("history").innerHTML = `<p class="muted">No previous investigations yet.</p>`;
+      list.innerHTML = `<p style="font-size:12px;color:var(--muted)">No prior investigations recorded in D1.</p>`;
       return;
     }
-    el("history").innerHTML = runs.map(r => `
-      <div class="history-item" onclick="loadRun(${r.id})">
-        <div><strong>${escapeHtml(r.query_value)}</strong> <span class="muted">#${r.id}</span></div>
-        <div class="muted">${escapeHtml(r.created_at.slice(0, 19).replace("T", " "))} UTC</div>
-      </div>`).join("");
-  } catch {
-    el("history").innerHTML = "";
-  }
+    list.innerHTML = runs.slice(0, 10).map(r => `
+      <div class="history-item" onclick="loadHistoricalRun(${r.id})">
+        <div><strong>${escapeHtml(r.query_value)}</strong> <span style="font-size:11px;color:var(--muted)">#${r.id}</span></div>
+        <div style="font-size:11px;color:var(--muted);font-family:var(--mono);">${escapeHtml(r.created_at.slice(0, 19).replace('T', ' '))} UTC</div>
+      </div>
+    `).join("");
+  } catch {}
 }
 
-async function loadRun(id) {
-  el("searchMessage").textContent = "Loading investigation #" + id + "…";
-  el("results").innerHTML = "";
+async function loadHistoricalRun(id) {
   try {
-    const d = await request("/api/v1/search/runs/" + id);
-    el("username").value = d.query_value;
-    el("searchMessage").textContent = `Investigation #${d.id} · ${d.query_value}`;
-    const candidates = d.evidence.filter(e => e.status === "candidate").length;
-    el("summary").classList.remove("hidden");
-    el("summary").innerHTML = `
-      <span>Total sources: ${d.evidence.length}</span>
-      <span>Candidates: ${candidates}</span>
-      <span><a href="/api/v1/search/runs/${d.id}/report.md" target="_blank" style="color:var(--cyan)">Download report</a></span>`;
-    el("results").innerHTML = renderEvidence(d.evidence);
-  } catch (e) {
-    el("searchMessage").textContent = e.message;
-  }
+    const res = await fetch("/api/v1/search/runs/" + id, {
+      headers: { "Authorization": "Bearer " + token }
+    });
+    if (!res.ok) return;
+    const d = await res.json();
+    el("searchInput").value = d.query_value;
+    currentQuery = d.query_value;
+    renderSearchResults(d);
+  } catch {}
 }
 
-// Boot
+function escapeHtml(s) {
+  return String(s || "").replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+}
+
+// Initial Boot Check
 fetch("/healthz").then(r => r.json()).then(d => {
-  if (d.providers) el("providerCount").textContent = d.providers + " SOURCES";
+  if (d.providers) el("sourcesCount").textContent = d.providers + " SOURCES ACTIVE";
 }).catch(() => {});
-showWorkspace();
+
+updateAuthUI();
 </script>
 </body>
 </html>
