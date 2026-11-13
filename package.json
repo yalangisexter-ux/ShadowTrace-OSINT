@@ -6,6 +6,8 @@
   "main": "src/index.ts",
   "scripts": {
     "dev": "wrangler dev",
+    "dev:local": "tsx --experimental-sqlite src/local-dev.ts",
+    "start": "tsx --experimental-sqlite src/local-dev.ts",
     "deploy": "wrangler deploy",
     "d1:create": "wrangler d1 create shadowtrace-db",
     "d1:migrate:local": "wrangler d1 migrations apply shadowtrace-db --local",
@@ -19,6 +21,7 @@
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20261104.1",
     "@hono/node-server": "^2.1.8",
+    "tsx": "^4.23.15",
     "typescript": "^5.7.2",
     "wrangler": "^4.158.0"
   }
