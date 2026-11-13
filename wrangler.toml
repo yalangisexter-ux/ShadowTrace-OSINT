@@ -10,7 +10,7 @@ binding = "ASSETS"
 [[d1_databases]]
 binding = "DB"
 database_name = "shadowtrace-db"
-database_id = "local-shadowtrace-db"
+database_id = "1027994b-68fa-488e-8ab5-249f8c0d74a6"
 migrations_dir = "migrations"
 
 [vars]
