@@ -30,6 +30,7 @@ export interface PhoneResult {
     url: string;
     status: "verified" | "candidate" | "inconclusive";
     identityName?: string;
+    identifierDisplay?: string;
     fieldsCount?: number;
     extraFields?: Record<string, string>;
     detail: string;
@@ -202,14 +203,11 @@ export function analyzePhoneNumber(input: string): PhoneResult {
       icon: "unacademy.com"
     });
   } else {
-    // Dynamic entity extraction for ANY phone number
-    const callerHandle = `user_${national10.slice(-4)}`;
-    entities.names = [`Subscriber (${carrier.split(" ")[0]})`, callerHandle];
-    entities.usernames = [callerHandle];
-    entities.profile_pictures = [
-      `https://api.dicebear.com/7.x/identicon/svg?seed=${national10}`
-    ];
-    entities.first_seen = "May 18, 2020";
+    // Legitimate telecom analysis without fabricated identities
+    entities.names = [];
+    entities.usernames = [];
+    entities.profile_pictures = [];
+    entities.first_seen = "Telecom Allocation";
 
     platforms.push({
       name: "TRUECALLER",
@@ -218,44 +216,15 @@ export function analyzePhoneNumber(input: string): PhoneResult {
         ? `https://www.truecaller.com/search/in/${national10}` 
         : `https://www.truecaller.com/search/global/${rawCleanedDigits}`,
       status: "candidate",
-      identityName: callerHandle,
+      identifierDisplay: `Phone: ${formatted}`,
       fieldsCount: 3,
       extraFields: {
-        "Directory": "Community Caller ID",
+        "Directory": "Community Caller ID (Live Web Pivot)",
         "Carrier Circle": region,
-        "Line Status": "Active GSM"
+        "Line Status": "Allocated GSM"
       },
-      detail: `Community caller ID record identified for ${formatted}.`,
+      detail: `Inspect Truecaller community caller ID and associated spam score for ${formatted}.`,
       icon: "truecaller.com"
-    });
-
-    platforms.push({
-      name: "UNACADEMY",
-      category: "Education",
-      url: "https://unacademy.com",
-      status: "candidate",
-      identityName: callerHandle,
-      fieldsCount: 4,
-      extraFields: {
-        "Phone": formatted,
-        "Status": "Registered Student"
-      },
-      detail: `Registered student profile on Unacademy network for ${formatted}.`,
-      icon: "unacademy.com"
-    });
-
-    platforms.push({
-      name: "TESTBOOK",
-      category: "Education",
-      url: "https://testbook.com",
-      status: "candidate",
-      fieldsCount: 2,
-      extraFields: {
-        "Phone": formatted,
-        "Account": "Active Candidate"
-      },
-      detail: `Testbook educational account registered for ${formatted}.`,
-      icon: "testbook.com"
     });
   }
 
