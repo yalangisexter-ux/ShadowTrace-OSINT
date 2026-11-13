@@ -38,6 +38,11 @@ type Variables = {
 
 const app = new Hono<{ Bindings: Env; Variables: Variables }>();
 
+app.onError((err, c) => {
+  console.error("Unhandled error:", err);
+  return c.json({ detail: err.message || "Internal server error" }, 500);
+});
+
 // Simple in-memory sliding window rate limiter
 const attempts = new Map<string, number[]>();
 

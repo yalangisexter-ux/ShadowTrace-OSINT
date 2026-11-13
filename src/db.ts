@@ -33,26 +33,23 @@ export interface EvidenceRow {
  * Provides zero-friction initialization if migrations haven't run yet.
  */
 export async function ensureSchema(db: D1Database): Promise<void> {
-  await db.exec(`
-    CREATE TABLE IF NOT EXISTS users (
+  const queries = [
+    `CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       email TEXT UNIQUE NOT NULL,
       password_hash TEXT NOT NULL,
       created_at TEXT NOT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS search_runs (
+    );`,
+    `CREATE TABLE IF NOT EXISTS search_runs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       query_type TEXT NOT NULL DEFAULT 'username',
       query_value TEXT NOT NULL,
       created_at TEXT NOT NULL
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_search_runs_user_id ON search_runs(user_id);
-    CREATE INDEX IF NOT EXISTS idx_search_runs_created_at ON search_runs(created_at);
-
-    CREATE TABLE IF NOT EXISTS evidence (
+    );`,
+    `CREATE INDEX IF NOT EXISTS idx_search_runs_user_id ON search_runs(user_id);`,
+    `CREATE INDEX IF NOT EXISTS idx_search_runs_created_at ON search_runs(created_at);`,
+    `CREATE TABLE IF NOT EXISTS evidence (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       run_id INTEGER NOT NULL REFERENCES search_runs(id) ON DELETE CASCADE,
       provider TEXT NOT NULL,
@@ -63,10 +60,16 @@ export async function ensureSchema(db: D1Database): Promise<void> {
       confidence TEXT NOT NULL,
       detail TEXT NOT NULL,
       checked_at TEXT NOT NULL
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_evidence_run_id ON evidence(run_id);
-  `);
+    );`,
+    `CREATE INDEX IF NOT EXISTS idx_evidence_run_id ON evidence(run_id);`,
+  ];
+  for (const q of queries) {
+    try {
+      await db.prepare(q).run();
+    } catch (e) {
+      console.error("Schema query error:", e);
+    }
+  }
 }
 
 export async function getUserByEmail(db: D1Database, email: string): Promise<UserRow | null> {
