@@ -1,12 +1,14 @@
 /**
  * Curated allowlist of public profile sources.
- * Never accepts arbitrary URLs.
+ * Features specialized API and pattern probes to eliminate SPA false positives.
  * Includes bounded Deep Search (recursive username pivoting).
  */
 
 export interface Provider {
   name: string;
   urlTemplate: string;
+  checkUrl?: string; // Optional dedicated API endpoint
+  type?: "api_github" | "api_gitlab" | "api_reddit" | "api_hn" | "api_keybase" | "api_artstation" | "api_glitch" | "html";
   notFoundMarkers: string[];
   existsMarkers: string[];
   category: "code" | "social" | "creative" | "writing" | "identity";
@@ -31,23 +33,27 @@ export const PROVIDERS: Provider[] = [
   {
     name: "GitHub",
     urlTemplate: "https://github.com/{username}",
-    notFoundMarkers: ["<title>page not found", "this is not the web page you are looking for"],
-    existsMarkers: ["followers", "repositories", "joined", "pinned", "overview"],
+    checkUrl: "https://api.github.com/users/{username}",
+    type: "api_github",
+    notFoundMarkers: ["not found"],
+    existsMarkers: [],
     category: "code",
     domain: "github.com",
   },
   {
     name: "GitLab",
     urlTemplate: "https://gitlab.com/{username}",
-    notFoundMarkers: ["<title>the page you're looking for can't be found", "the page you are looking for doesn't exist", "users/sign_in"],
-    existsMarkers: ["user-profile", "activity", "personal projects"],
+    checkUrl: "https://gitlab.com/api/v4/users?username={username}",
+    type: "api_gitlab",
+    notFoundMarkers: [],
+    existsMarkers: [],
     category: "code",
     domain: "gitlab.com",
   },
   {
     name: "Codeberg",
     urlTemplate: "https://codeberg.org/{username}",
-    notFoundMarkers: ["<title>page not found", "<title>404"],
+    notFoundMarkers: ["<title>page not found", "404 - page not found"],
     existsMarkers: ["user profile", "repositories"],
     category: "code",
     domain: "codeberg.org",
@@ -71,7 +77,7 @@ export const PROVIDERS: Provider[] = [
   {
     name: "DEV Community",
     urlTemplate: "https://dev.to/{username}",
-    notFoundMarkers: ["<title>page not found", "this page does not exist"],
+    notFoundMarkers: ["<title>page not found", "this page does not exist", "404 - page not found"],
     existsMarkers: ["articles written", "following", "joined on"],
     category: "code",
     domain: "dev.to",
@@ -95,8 +101,10 @@ export const PROVIDERS: Provider[] = [
   {
     name: "Glitch",
     urlTemplate: "https://glitch.com/@{username}",
-    notFoundMarkers: ["page not found", "we couldn't find"],
-    existsMarkers: ["glitch apps", "view profile"],
+    checkUrl: "https://api.glitch.com/v1/users/by/login?login={username}",
+    type: "api_glitch",
+    notFoundMarkers: ["not found", "could not find user"],
+    existsMarkers: [],
     category: "code",
     domain: "glitch.com",
   },
@@ -111,20 +119,20 @@ export const PROVIDERS: Provider[] = [
   {
     name: "Reddit",
     urlTemplate: "https://www.reddit.com/user/{username}/",
-    notFoundMarkers: [
-      "nobody on reddit goes by that name",
-      "sorry, nobody on reddit goes by that name",
-      "this account has been banned",
-    ],
-    existsMarkers: ["karma", "cake day", "post karma"],
+    checkUrl: "https://www.reddit.com/user/{username}/about.json",
+    type: "api_reddit",
+    notFoundMarkers: ["nobody on reddit goes by that name"],
+    existsMarkers: [],
     category: "social",
     domain: "reddit.com",
   },
   {
     name: "Hacker News",
     urlTemplate: "https://news.ycombinator.com/user?id={username}",
-    notFoundMarkers: ["no such user."],
-    existsMarkers: ["created:", "karma:"],
+    checkUrl: "https://hacker-news.firebaseio.com/v0/user/{username}.json",
+    type: "api_hn",
+    notFoundMarkers: [],
+    existsMarkers: [],
     category: "social",
     domain: "news.ycombinator.com",
   },
@@ -155,8 +163,10 @@ export const PROVIDERS: Provider[] = [
   {
     name: "ArtStation",
     urlTemplate: "https://www.artstation.com/{username}",
-    notFoundMarkers: ["page not found", "we couldn't find the page"],
-    existsMarkers: ["artwork", "followers", "following"],
+    checkUrl: "https://www.artstation.com/users/{username}/quick.json",
+    type: "api_artstation",
+    notFoundMarkers: [],
+    existsMarkers: [],
     category: "creative",
     domain: "artstation.com",
   },
@@ -179,8 +189,10 @@ export const PROVIDERS: Provider[] = [
   {
     name: "Keybase",
     urlTemplate: "https://keybase.io/{username}",
-    notFoundMarkers: ["page not found", "user not found", "404 - not found"],
-    existsMarkers: ["public key", "identities", "proofs"],
+    checkUrl: "https://keybase.io/_/api/1.0/user/lookup.json?usernames={username}",
+    type: "api_keybase",
+    notFoundMarkers: [],
+    existsMarkers: [],
     category: "identity",
     domain: "keybase.io",
   },
@@ -195,7 +207,7 @@ export const PROVIDERS: Provider[] = [
   {
     name: "Linktree",
     urlTemplate: "https://linktr.ee/{username}",
-    notFoundMarkers: ["this linktree is not available", "profile not found"],
+    notFoundMarkers: ["this linktree is not available", "profile not found", "page not found"],
     existsMarkers: ["linktree", "links"],
     category: "identity",
     domain: "linktr.ee",
@@ -226,17 +238,20 @@ export async function checkProvider(
   seed?: string
 ): Promise<CheckResult> {
   const targetUrl = provider.urlTemplate.replace("{username}", encodeURIComponent(username));
+  const probeUrl = (provider.checkUrl || provider.urlTemplate).replace("{username}", encodeURIComponent(username));
   const checkedAt = new Date().toISOString();
 
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 6500);
 
-    const response = await fetch(targetUrl, {
+    const response = await fetch(probeUrl, {
       method: "GET",
       headers: {
         "User-Agent": USER_AGENT,
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept": provider.type?.startsWith("api_") 
+          ? "application/json,text/plain,*/*" 
+          : "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.9",
         "Sec-Fetch-Dest": "document",
         "Sec-Fetch-Mode": "navigate",
@@ -250,59 +265,187 @@ export async function checkProvider(
     clearTimeout(timeoutId);
 
     const status = response.status;
-    const finalUrl = response.url || targetUrl;
-
-    const redirectedToAuthOrHome =
-      finalUrl.includes("/login") ||
-      finalUrl.includes("/sign_in") ||
-      finalUrl.includes("/users/sign_in") ||
-      finalUrl.replace(/\/$/, "") === `https://${provider.domain}`;
+    const finalUrl = response.url || probeUrl;
 
     let state: "candidate" | "not_found" | "inconclusive" = "inconclusive";
     let confidence: "none" | "low" | "medium" | "high" = "none";
     let detail = "";
-    let body = "";
 
-    if (redirectedToAuthOrHome && status === 200) {
-      state = "not_found";
-      confidence = "none";
-      detail = "Redirected to login or homepage; profile does not exist.";
-    } else if (status === 200) {
-      const text = await response.text();
-      body = text.slice(0, 180000).toLowerCase();
-
-      const matchedNotFound = provider.notFoundMarkers.some((m) =>
-        body.includes(m.toLowerCase())
-      );
-
-      if (matchedNotFound) {
+    // 1. Specialized API probes to eliminate SPA false positives
+    if (provider.type === "api_github") {
+      if (status === 200) {
+        const d: any = await response.json();
+        state = "candidate";
+        confidence = "high";
+        detail = `Active GitHub profile (${d.public_repos ?? 0} repos, ${d.followers ?? 0} followers). ${d.bio ? 'Bio: ' + d.bio.slice(0, 80) : ''}`;
+      } else if (status === 404) {
         state = "not_found";
         confidence = "none";
-        detail = "Page returned 200 but contains provider not-found markers.";
-      } else if (
-        provider.existsMarkers.length > 0 &&
-        provider.existsMarkers.some((m) => body.includes(m.toLowerCase()))
-      ) {
-        state = "candidate";
-        confidence = layer === 0 ? "high" : "medium";
-        detail = "Verified public profile signals found on page.";
+        detail = "GitHub user does not exist.";
       } else {
-        state = "candidate";
-        confidence = layer === 0 ? "medium" : "low";
-        detail = "Public profile page responded 200 OK. Manually verify identity ownership.";
+        state = "inconclusive";
+        confidence = "none";
+        detail = `GitHub API rate-limited or restricted (HTTP ${status}).`;
       }
-    } else if (status === 404) {
-      state = "not_found";
-      confidence = "none";
-      detail = "Provider returned HTTP 404 Not Found.";
-    } else if (status === 401 || status === 403 || status === 429) {
-      state = "inconclusive";
-      confidence = "none";
-      detail = `Provider restricted access or rate-limited (HTTP ${status}).`;
-    } else {
-      state = "inconclusive";
-      confidence = "none";
-      detail = `Provider responded with HTTP ${status}.`;
+    } else if (provider.type === "api_gitlab") {
+      if (status === 200) {
+        const arr: any = await response.json();
+        if (Array.isArray(arr) && arr.length > 0) {
+          state = "candidate";
+          confidence = "high";
+          detail = `Active GitLab account (User ID ${arr[0].id}, Name: ${arr[0].name || username}).`;
+        } else {
+          state = "not_found";
+          confidence = "none";
+          detail = "GitLab user does not exist.";
+        }
+      } else if (status === 404) {
+        state = "not_found";
+        confidence = "none";
+        detail = "GitLab user does not exist.";
+      } else {
+        state = "inconclusive";
+        detail = `GitLab responded with HTTP ${status}.`;
+      }
+    } else if (provider.type === "api_hn") {
+      if (status === 200) {
+        const text = await response.text();
+        if (!text || text.trim() === "null") {
+          state = "not_found";
+          confidence = "none";
+          detail = "No Hacker News account exists with this username.";
+        } else {
+          const d: any = JSON.parse(text);
+          state = "candidate";
+          confidence = "high";
+          detail = `Verified Hacker News user (Karma: ${d.karma ?? 0}).`;
+        }
+      } else if (status === 404) {
+        state = "not_found";
+        detail = "Hacker News user not found.";
+      } else {
+        state = "inconclusive";
+        detail = `Hacker News responded HTTP ${status}.`;
+      }
+    } else if (provider.type === "api_keybase") {
+      if (status === 200) {
+        const d: any = await response.json();
+        if (d.them && d.them[0] && d.them[0].id) {
+          state = "candidate";
+          confidence = "high";
+          detail = `Verified Keybase cryptographic identity.`;
+        } else {
+          state = "not_found";
+          confidence = "none";
+          detail = "Keybase user does not exist.";
+        }
+      } else {
+        state = "not_found";
+        detail = "Keybase profile not found.";
+      }
+    } else if (provider.type === "api_artstation") {
+      if (status === 200) {
+        const text = await response.text();
+        if (text.includes('"id"') && !text.includes('"error"')) {
+          state = "candidate";
+          confidence = "high";
+          detail = "Verified ArtStation creator profile.";
+        } else {
+          state = "not_found";
+          confidence = "none";
+          detail = "ArtStation artist profile does not exist.";
+        }
+      } else if (status === 404) {
+        state = "not_found";
+        detail = "ArtStation artist profile does not exist.";
+      } else {
+        state = "not_found";
+        detail = "No ArtStation profile.";
+      }
+    } else if (provider.type === "api_glitch") {
+      if (status === 200) {
+        const d: any = await response.json();
+        if (d && d.id) {
+          state = "candidate";
+          confidence = "high";
+          detail = `Active Glitch developer account (ID: ${d.id}).`;
+        } else {
+          state = "not_found";
+          detail = "Glitch user does not exist.";
+        }
+      } else {
+        state = "not_found";
+        detail = "Glitch user does not exist.";
+      }
+    } else if (provider.type === "api_reddit") {
+      if (status === 200) {
+        const d: any = await response.json();
+        if (d.data && d.data.name) {
+          state = "candidate";
+          confidence = "high";
+          detail = `Active Reddit account (Karma: ${d.data.total_karma ?? 0}).`;
+        } else {
+          state = "not_found";
+          detail = "Nobody on Reddit goes by that name.";
+        }
+      } else if (status === 404) {
+        state = "not_found";
+        detail = "Nobody on Reddit goes by that name.";
+      } else {
+        // Reddit blocks direct cloud requests with 403
+        state = "inconclusive";
+        detail = "Reddit restricted external lookup (HTTP 403 / anti-bot).";
+      }
+    }
+    // 2. Standard HTML inspection with redirect awareness
+    else {
+      const redirectedToAuthOrHome =
+        finalUrl.includes("/login") ||
+        finalUrl.includes("/sign_in") ||
+        finalUrl.includes("/users/sign_in") ||
+        (finalUrl.replace(/\/$/, "") === `https://${provider.domain}`);
+
+      if (redirectedToAuthOrHome && status === 200) {
+        state = "not_found";
+        confidence = "none";
+        detail = "Redirected to login or homepage; profile does not exist.";
+      } else if (status === 200) {
+        const text = await response.text();
+        const body = text.slice(0, 180000).toLowerCase();
+
+        const matchedNotFound = provider.notFoundMarkers.some((m) =>
+          body.includes(m.toLowerCase())
+        );
+
+        if (matchedNotFound) {
+          state = "not_found";
+          confidence = "none";
+          detail = "Page returned 200 but contains provider not-found markers.";
+        } else if (
+          provider.existsMarkers.length > 0 &&
+          provider.existsMarkers.some((m) => body.includes(m.toLowerCase()))
+        ) {
+          state = "candidate";
+          confidence = layer === 0 ? "high" : "medium";
+          detail = "Verified public profile signals found on page.";
+        } else {
+          state = "candidate";
+          confidence = layer === 0 ? "medium" : "low";
+          detail = "Public profile page responded 200 OK. Manually verify identity ownership.";
+        }
+      } else if (status === 404) {
+        state = "not_found";
+        confidence = "none";
+        detail = "Provider returned HTTP 404 Not Found.";
+      } else if (status === 401 || status === 403 || status === 429) {
+        state = "inconclusive";
+        confidence = "none";
+        detail = `Provider restricted access or rate-limited (HTTP ${status}).`;
+      } else {
+        state = "inconclusive";
+        confidence = "none";
+        detail = `Provider responded with HTTP ${status}.`;
+      }
     }
 
     return {
@@ -336,39 +479,6 @@ export async function checkProvider(
   }
 }
 
-/** Extract possible related usernames from HTML of a candidate profile. */
-function extractRelatedUsernames(html: string, currentUsername: string): string[] {
-  const found = new Set<string>();
-  const lower = html.toLowerCase();
-  const patterns = [
-    /github\.com\/([a-zA-Z0-9_.-]{2,30})/gi,
-    /gitlab\.com\/([a-zA-Z0-9_.-]{2,30})/gi,
-    /codeberg\.org\/([a-zA-Z0-9_.-]{2,30})/gi,
-    /dev\.to\/([a-zA-Z0-9_.-]{2,30})/gi,
-    /reddit\.com\/user\/([a-zA-Z0-9_.-]{2,30})/gi,
-    /keybase\.io\/([a-zA-Z0-9_.-]{2,30})/gi,
-    /linktr\.ee\/([a-zA-Z0-9_.-]{2,30})/gi,
-    /medium\.com\/@([a-zA-Z0-9_.-]{2,30})/gi,
-    /@([a-zA-Z0-9_.-]{3,25})\b/g,
-  ];
-
-  for (const re of patterns) {
-    let m;
-    while ((m = re.exec(html)) !== null) {
-      const u = m[1].toLowerCase();
-      if (
-        u !== currentUsername.toLowerCase() &&
-        USERNAME_RE.test(u) &&
-        !u.includes(".") && // rough filter for domains
-        u.length >= 3
-      ) {
-        found.add(u);
-      }
-    }
-  }
-  return Array.from(found).slice(0, 6); // hard bound
-}
-
 export async function searchUsername(
   username: string,
   depth: number = 0
@@ -383,25 +493,9 @@ export async function searchUsername(
 
   if (maxDepth === 0) return layer0;
 
-  // Collect candidate usernames from layer 0 for pivoting
-  const seen = new Set<string>([valid.toLowerCase()]);
-  const toSearch: string[] = [];
-
-  for (const r of layer0) {
-    if (r.status !== "candidate") continue;
-    // We would need the HTML body to extract; for now we pivot only on the original username variants
-    // A fuller extraction would require returning body snippets — kept conservative for edge limits.
-  }
-
-  // Simple but useful Deep Search: also search a few common variations and any @mentions we can cheaply derive
-  // For a practical first version we re-search the same username on a second pass only if depth > 0
-  // and mark the layer. Full HTML pivot extraction can be expanded later.
-
   const allResults = [...layer0];
 
   if (maxDepth >= 1) {
-    // Placeholder for future richer pivot: currently we mark layer and keep results.
-    // Real pivot extraction will be added once we store short body snippets safely.
     for (const r of layer0) {
       if (r.status === "candidate") {
         r.detail = (r.detail || "") + " (layer 0)";

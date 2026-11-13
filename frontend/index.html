@@ -670,29 +670,32 @@ function signOut() {
   updateAuthUI();
 }
 
+let currentSearchType = "username";
+
 function setSearchType(type) {
+  currentSearchType = type;
   document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
   event.target.classList.add("active");
   const input = el("searchInput");
   if (type === "username") {
     input.placeholder = "Enter target handle (e.g. octocat)...";
   } else if (type === "email") {
-    input.placeholder = "Enter email address to extract handle (e.g. user@domain.com)...";
+    input.placeholder = "Enter email address (e.g. analyst@example.com)...";
   } else if (type === "phone") {
-    input.placeholder = "Enter phone number...";
+    input.placeholder = "Enter phone number (e.g. 9010183934 or +1...)...";
   }
 }
 
 function quickFill(name) {
   el("searchInput").value = name;
+  currentSearchType = "username";
+  document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+  document.querySelector(".tab-btn")?.classList.add("active");
   executeSearch();
 }
 
 async function executeSearch() {
   let val = el("searchInput").value.trim();
-  if (val.includes("@")) {
-    val = val.split("@")[0]; // extract handle from email
-  }
   if (!val) return;
 
   currentQuery = val;
@@ -711,7 +714,7 @@ async function executeSearch() {
       el("scanFill").style.width = current + "%";
       el("scanPercent").textContent = current + "%";
     }
-  }, 350);
+  }, 250);
 
   try {
     const res = await fetch("/api/v1/search/username", {
@@ -720,7 +723,7 @@ async function executeSearch() {
         "Content-Type": "application/json",
         ...(token ? { "Authorization": "Bearer " + token } : {})
       },
-      body: JSON.stringify({ username: val })
+      body: JSON.stringify({ query: val, type: currentSearchType, username: val })
     });
     const d = await res.json();
     if (!res.ok) throw new Error(d.detail || "Search request failed");
@@ -732,12 +735,17 @@ async function executeSearch() {
     setTimeout(() => {
       el("scanProgress").classList.add("hidden");
       renderSearchResults(d);
-    }, 300);
+    }, 200);
 
     if (token) loadHistory();
   } catch (err) {
     clearInterval(progressInterval);
     el("scanProgress").classList.add("hidden");
+    alert("Investigation error: " + err.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
     alert("Investigation error: " + err.message);
   } finally {
     btn.disabled = false;
