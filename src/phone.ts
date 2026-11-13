@@ -140,93 +140,29 @@ export function analyzePhoneNumber(input: string): PhoneResult {
 
   const platforms: PhoneResult["platforms"] = [];
 
-  // Special intelligence resolution for 9010183934 (Exact test case from fingerprint.to)
-  if (national10 === "9010183934") {
-    entities.names = ["raja", "Hema", "happy12345_star751"];
-    entities.profile_pictures = [
-      "https://api.dicebear.com/7.x/bottts/svg?seed=Hema&backgroundColor=b6e3f4,c0aede,d1d4f9",
-    ];
-    entities.first_seen = "Apr 22, 2019";
+  // Genuine telecom analysis without fabricated identities
+  entities.names = [];
+  entities.usernames = [];
+  entities.profile_pictures = [];
+  entities.first_seen = "Telecom Allocation";
 
-    // 1. TESTBOOK
-    platforms.push({
-      name: "TESTBOOK",
-      category: "Education",
-      url: "https://testbook.com",
-      status: "candidate",
-      identityName: "Hema",
-      fieldsCount: 3,
-      extraFields: {
-        "Name": "Hema",
-        "Phone": `+919010183934`,
-        "Status": "Registered Student Profile",
-        "Exam Target": "State & Central Exams"
-      },
-      detail: `Verified Testbook educational profile registered under name Hema with phone +919010183934.`,
-      icon: "testbook.com"
-    });
-
-    // 2. CONTACTSPLUS
-    platforms.push({
-      name: "CONTACTSPLUS",
-      category: "Identity Directory",
-      url: "https://www.contactsplus.com",
-      status: "candidate",
-      identityName: "raja",
-      fieldsCount: 1,
-      extraFields: {
-        "Associated Name": "raja",
-        "Phone": `+919010183934`,
-        "Sync Date": "2021-08-14"
-      },
-      detail: `ContactsPlus directory record associated with name "raja" for mobile number +919010183934.`,
-      icon: "contactsplus.com"
-    });
-
-    // 3. UNACADEMY
-    platforms.push({
-      name: "UNACADEMY",
-      category: "Education",
-      url: "https://unacademy.com",
-      status: "candidate",
-      identityName: "Hema",
-      fieldsCount: 6,
-      extraFields: {
-        "Phone": `+919010183934`,
-        "Name": "Hema",
-        "Platform": "Unacademy Learning App",
-        "Goal": "Competitive Examinations",
-        "Language": "Telugu / English",
-        "State": "Andhra Pradesh"
-      },
-      detail: `Active learning profile registered on Unacademy platform matching mobile +919010183934.`,
-      icon: "unacademy.com"
-    });
-  } else {
-    // Legitimate telecom analysis without fabricated identities
-    entities.names = [];
-    entities.usernames = [];
-    entities.profile_pictures = [];
-    entities.first_seen = "Telecom Allocation";
-
-    platforms.push({
-      name: "TRUECALLER",
-      category: "Caller ID",
-      url: country === "India" 
-        ? `https://www.truecaller.com/search/in/${national10}` 
-        : `https://www.truecaller.com/search/global/${rawCleanedDigits}`,
-      status: "candidate",
-      identifierDisplay: `Phone: ${formatted}`,
-      fieldsCount: 3,
-      extraFields: {
-        "Directory": "Community Caller ID (Live Web Pivot)",
-        "Carrier Circle": region,
-        "Line Status": "Allocated GSM"
-      },
-      detail: `Inspect Truecaller community caller ID and associated spam score for ${formatted}.`,
-      icon: "truecaller.com"
-    });
-  }
+  platforms.push({
+    name: "TRUECALLER",
+    category: "Caller ID",
+    url: country === "India" 
+      ? `https://www.truecaller.com/search/in/${national10}` 
+      : `https://www.truecaller.com/search/global/${rawCleanedDigits}`,
+    status: "candidate",
+    identifierDisplay: `Phone: ${formatted}`,
+    fieldsCount: 3,
+    extraFields: {
+      "Directory": "Community Caller ID (Live Web Pivot)",
+      "Carrier Circle": region,
+      "Line Status": "Allocated GSM"
+    },
+    detail: `Query Truecaller directory for caller identity and spam score for ${formatted}.`,
+    icon: "truecaller.com"
+  });
 
   // 4. WhatsApp Messenger
   platforms.push({

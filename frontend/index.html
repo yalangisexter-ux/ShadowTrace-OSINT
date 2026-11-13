@@ -672,7 +672,7 @@ main {
     <div class="search-row">
       <div class="input-box">
         <span id="countryPrefix" class="country-pill">🇮🇳 India ⌖</span>
-        <input id="searchInput" type="text" value="+919010183934" placeholder="+919010183934" autofocus onkeydown="if(event.key==='Enter') executeSearch()">
+        <input id="searchInput" type="text" value="" placeholder="+91 98765 43210" autofocus onkeydown="if(event.key==='Enter') executeSearch()">
         <span class="search-icon-btn" onclick="executeSearch()">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         </span>
@@ -700,9 +700,8 @@ main {
   <!-- Presets -->
   <div class="presets-row">
     <span>Quick Targets:</span>
-    <span class="preset-tag" onclick="quickFill('+919010183934', 'phone')">📞 +919010183934</span>
-    <span class="preset-tag" onclick="quickFill('hemarushaharinath.k@gmail.com', 'email')">✉ hemarushaharinath.k@gmail.com</span>
     <span class="preset-tag" onclick="quickFill('torvalds', 'username')">@ torvalds</span>
+    <span class="preset-tag" onclick="quickFill('torvalds@linux-foundation.org', 'email')">✉ torvalds@linux-foundation.org</span>
     <span class="preset-tag" onclick="quickFill('cloudflare.com', 'domain')">🌐 cloudflare.com</span>
   </div>
 
@@ -888,20 +887,16 @@ function setSearchType(type) {
   if (type === "phone") {
     prefix.classList.remove("hidden");
     prefix.textContent = "🇮🇳 India ⌖";
-    input.placeholder = "+919010183934";
-    if (!input.value.startsWith("+91")) input.value = "+919010183934";
+    input.placeholder = "+91 98765 43210";
   } else if (type === "email") {
     prefix.classList.add("hidden");
-    input.placeholder = "hemarushaharinath.k@gmail.com";
-    if (!input.value.includes("@")) input.value = "hemarushaharinath.k@gmail.com";
+    input.placeholder = "target@example.com";
   } else if (type === "username") {
     prefix.classList.add("hidden");
     input.placeholder = "torvalds";
-    if (input.value.includes("@") || input.value.startsWith("+")) input.value = "torvalds";
   } else if (type === "domain") {
     prefix.classList.add("hidden");
     input.placeholder = "cloudflare.com";
-    if (input.value.includes("@") || input.value.startsWith("+")) input.value = "cloudflare.com";
   }
 }
 
