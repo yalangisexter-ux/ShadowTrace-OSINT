@@ -1,0 +1,25 @@
+{
+  "name": "shadowtrace-osint",
+  "version": "0.2.0",
+  "type": "module",
+  "description": "ShadowTrace OSINT - Migrated to Cloudflare Workers and D1",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "d1:create": "wrangler d1 create shadowtrace-db",
+    "d1:migrate:local": "wrangler d1 migrations apply shadowtrace-db --local",
+    "d1:migrate:remote": "wrangler d1 migrations apply shadowtrace-db --remote",
+    "typecheck": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test tests/worker.test.mjs"
+  },
+  "dependencies": {
+    "hono": "^4.6.14"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261104.1",
+    "@hono/node-server": "^2.1.8",
+    "typescript": "^5.7.2",
+    "wrangler": "^4.158.0"
+  }
+}

@@ -1,95 +1,100 @@
-# ShadowTrace OSINT
+# ShadowTrace OSINT (Cloudflare Edition)
 
 A privacy-conscious OSINT workspace for researching **public usernames** across a curated set of public websites. ShadowTrace records the source URL, timestamp, response status, and confidence label for each check.
 
 > ShadowTrace is an independent implementation and is not affiliated with Fingerprint.to. A responding profile page is only a candidate match—not proof of identity.
 
-## Included in this first build
+## Architecture: Cloudflare Workers + D1 + Pages
 
-- Responsive web interface with account registration and sign-in.
-- Password hashing with Argon2 and signed, expiring JWT access tokens.
-- Concurrent public-profile checks against a fixed provider allowlist (GitHub, GitLab, Reddit, Codeberg, DEV Community).
-- Conservative result states: candidate, not found, or inconclusive.
-- Per-account investigation history and stored source evidence.
-- Request throttling, strict username validation, bounded HTTP timeouts, no redirect following, and no arbitrary URL fetch endpoint.
-- SQLite for local development; PostgreSQL for production.
-- Render Blueprint and GitHub Actions test workflow.
+This application has been migrated from a monolithic server to a globally distributed, edge-native architecture on Cloudflare:
 
-## Local development
+- **Frontend:** Responsive SPA static assets served via Cloudflare Pages / Workers Static Assets.
+- **API Runtime:** Edge-native Cloudflare Worker powered by [Hono](https://hono.dev/) with zero cold-starts.
+- **Database:** [Cloudflare D1](https://developers.cloudflare.com/d1/) serverless SQL database with automated schema migration.
+- **Authentication:** Web Crypto API standard PBKDF2-SHA256 password hashing and expiring HMAC-SHA256 JWT access tokens.
+- **Concurrent Subrequests:** Parallel OSINT lookups across 20+ curated public platforms executed concurrently at Cloudflare's edge.
 
-Python 3.11+:
+---
 
+## Quickstart & Local Development
+
+### Prerequisites
+- Node.js 20+
+- Cloudflare Wrangler CLI (included in devDependencies)
+
+### 1. Install Dependencies
 ```bash
-python -m venv .venv
-# Windows: .venv\\Scripts\\activate
-# macOS/Linux: source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env
-uvicorn app.main:app --reload
+npm install
 ```
 
-Open http://127.0.0.1:8000. The local default database is `shadowtrace.db`.
-
-Run tests:
-
+### 2. Run Test Suite
 ```bash
-pytest -q
+npm test
 ```
 
-## Deploy on Render (full ownership checklist)
+### 3. Local Cloudflare Development
+```bash
+npm run dev
+```
+Open [http://localhost:8787](http://localhost:8787) to interact with the web workspace.
 
-Service URL (once healthy): https://shadowtrace-osint.onrender.com  
-Dashboard: https://dashboard.render.com/web/srv-dbqtf38u01pc73emvm6g
+---
 
-### Required one-time setup
+## Production Deployment to Cloudflare
 
-1. **Create a PostgreSQL database** in the same Render workspace (New → PostgreSQL).  
-   Prefer the same region as the web service. Copy the **Internal Database URL**.
+### Step 1: Login to Cloudflare Wrangler
+```bash
+npx wrangler login
+```
 
-2. **Set Environment Variables** on the web service:
-   - `DATABASE_URL` → the Internal Database URL (must start with `postgresql://` or `postgres://`)
-   - `SECRET_KEY` → a long random value (≥ 32 characters). Generate with:
-     ```bash
-     python -c "import secrets; print(secrets.token_urlsafe(48))"
-     ```
-   - `APP_ENV` should already be `production`
+### Step 2: Create your Cloudflare D1 Database
+```bash
+npx wrangler d1 create shadowtrace-db
+```
+Wrangler will output the `database_id`. Update your `wrangler.toml`:
+```toml
+[[d1_databases]]
+binding = "DB"
+database_name = "shadowtrace-db"
+database_id = "<YOUR_DATABASE_ID_FROM_STEP_2>"
+```
 
-3. **Trigger a new deploy** (or push any commit). Watch the Logs tab.
+### Step 3: Apply the SQL Schema Migrations to D1
+```bash
+npx wrangler d1 migrations apply shadowtrace-db --remote
+```
+*(Or execute `npx wrangler d1 execute shadowtrace-db --remote --file=./schema.sql`)*
 
-4. **Verify**:
-   ```bash
-   curl https://shadowtrace-osint.onrender.com/healthz
-   ```
-   Expected healthy response:
-   ```json
-   {"status":"ok","service":"shadowtrace-osint","version":"0.1.1","config":{"secret_key_set":true,"database_configured":true,...}}
-   ```
-   If `status` is `"degraded"`, the `config` object tells you exactly which setting is still missing.
+### Step 4: Set the JWT Production Secret Key
+Generate a strong secret (32+ characters) and store it securely in Cloudflare:
+```bash
+npx wrangler secret put SECRET_KEY
+```
 
-The app now boots even when configuration is incomplete and reports the missing pieces via `/healthz` instead of crashing. Never commit production credentials.
+### Step 5: Deploy
+```bash
+npm run deploy
+```
 
-## API
+---
+
+## API Specification
 
 | Method | Endpoint | Purpose |
 |---|---|---|
-| GET | `/healthz` | Health check |
-| POST | `/api/v1/auth/register` | Create account |
-| POST | `/api/v1/auth/login` | Sign in |
-| GET | `/api/v1/auth/me` | Current account (Bearer token) |
-| POST | `/api/v1/search/username` | Run public username checks |
-| GET | `/api/v1/search/runs` | List your investigations |
-| GET | `/api/v1/search/runs/{run_id}` | Read one investigation |
+| GET | `/healthz` | Health check & system diagnostics |
+| POST | `/api/v1/auth/register` | Create analyst account |
+| POST | `/api/v1/auth/login` | Sign in & receive Bearer JWT |
+| GET | `/api/v1/auth/me` | Current account details |
+| POST | `/api/v1/search/username` | Run concurrent public username checks |
+| GET | `/api/v1/search/runs` | List past investigations |
+| GET | `/api/v1/search/runs/:run_id` | Read detailed investigation evidence |
+| GET | `/api/v1/search/runs/:run_id/report.md` | Download Markdown investigation report |
 
-Registration/login body: `{"email":"analyst@example.com","password":"a-long-password-12"}`
+---
 
-Username search body: `{"username":"octocat"}`
-
-## Responsible-use boundaries
+## Responsible-Use Boundaries
 
 Use ShadowTrace only for legitimate security research and investigations with a lawful basis. Do not use it to stalk, harass, discriminate, expose private individuals, or make consequential decisions about a person. Respect each provider's terms, robots policies, and rate limits.
 
-This build checks only public profile pages. It does **not** access private accounts, bypass authentication, search breached/stolen datasets, enumerate identities by email or phone, infer a person's location, or expose sensitive personal information. Provider response codes can be misleading; restricted, rate-limited, redirected, and failed requests are marked inconclusive.
-
-## Engineering notes / next milestones
-
-This is the first deployable foundation, not a claim of complete Fingerprint.to parity. Before broadening provider coverage, add provider-specific policy tests and stronger false-positive detection. Before scaling beyond a single instance, move throttling to shared storage, add database migrations, add durable background jobs, and add structured audit logging/retention controls. Add report export only after evidence provenance and access controls are reviewed.
+This build checks only public profile pages. It does **not** access private accounts, bypass authentication, search breached/stolen datasets, enumerate identities by email or phone, infer a person's location, or expose sensitive personal information.
