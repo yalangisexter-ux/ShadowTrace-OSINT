@@ -1,5 +1,7 @@
 /**
  * Email Reverse Identity & Intelligence Engine
+ * Features disposable email detection, Gravatar profile generation,
+ * GitHub commit author discovery, breach lookups, and username pivot.
  */
 
 export interface EmailResult {
@@ -8,9 +10,11 @@ export interface EmailResult {
   domain: string;
   provider: string;
   isFreeProvider: boolean;
+  isDisposable: boolean;
   gravatar: {
     hasAvatar: boolean;
     avatarUrl: string;
+    profileUrl: string;
   };
   pivots: {
     name: string;
@@ -30,71 +34,90 @@ const COMMON_PROVIDERS: Record<string, string> = {
   "live.com": "Microsoft Live",
   "yahoo.com": "Yahoo Mail",
   "icloud.com": "Apple iCloud",
-  "proton.me": "ProtonMail (Encrypted)",
-  "protonmail.com": "ProtonMail (Encrypted)",
+  "proton.me": "ProtonMail (End-to-End Encrypted)",
+  "protonmail.com": "ProtonMail (End-to-End Encrypted)",
   "zoho.com": "Zoho Mail",
   "mail.com": "Mail.com",
   "gmx.com": "GMX Mail",
+  "yandex.com": "Yandex Mail",
+  "fastmail.com": "Fastmail",
 };
+
+const DISPOSABLE_DOMAINS = new Set([
+  "mailinator.com", "10minutemail.com", "guerrillamail.com", "tempmail.com", "yopmail.com",
+  "throwawaymail.com", "sharklasers.com", "getairmail.com", "dispostable.com", "mytemp.email",
+  "fakeinbox.com", "trashmail.com", "temp-mail.org", "burnermail.io", "maildrop.cc"
+]);
 
 export async function analyzeEmail(email: string): Promise<EmailResult> {
   const cleaned = email.trim().toLowerCase();
   const [username, domain] = cleaned.split("@");
 
-  const provider = COMMON_PROVIDERS[domain] || `${domain} (Custom / Business Domain)`;
+  const isDisposable = DISPOSABLE_DOMAINS.has(domain);
+  const provider = isDisposable 
+    ? `${domain} [WARNING: Disposable / Burner Email Service]`
+    : (COMMON_PROVIDERS[domain] || `${domain} (Corporate / Custom Mail Exchange)`);
+  
   const isFreeProvider = Boolean(COMMON_PROVIDERS[domain]);
 
-  // Generate MD5 hash for Gravatar using Web Crypto API
+  // Generate SHA-256 hash for Gravatar using Web Crypto API
   const enc = new TextEncoder();
-  // Simple MD5 or SHA256 fallback (Gravatar v3 supports SHA-256)
   const hashBuffer = await crypto.subtle.digest("SHA-256", enc.encode(cleaned));
   const hashArray = Array.from(new Uint8Array(hashBuffer));
   const sha256Hex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 
-  // Gravatar URL
-  const avatarUrl = `https://www.gravatar.com/avatar/${sha256Hex}?d=mp&s=128`;
+  const avatarUrl = `https://www.gravatar.com/avatar/${sha256Hex}?d=mp&s=160`;
+  const profileUrl = `https://gravatar.com/${sha256Hex}`;
 
   const pivots = [
     {
-      name: "GitHub Commit Search",
-      category: "Code & Commits",
-      url: `https://github.com/search?q=author-email%3A%22${encodeURIComponent(cleaned)}%22&type=commits`,
+      name: `Cross-Platform Handle Search (@${username})`,
+      category: "identity",
+      url: `https://github.com/${username}`,
       status: "candidate" as const,
-      detail: `Check public Git commits authored by ${cleaned} across all public GitHub repositories.`,
+      detail: `Pivot: Username prefix "${username}" extracted from email. Ready for correlation across 40+ platforms.`,
       icon: "github.com",
     },
     {
-      name: "Gravatar Digital Profile",
-      category: "Identity & Avatar",
-      url: `https://gravatar.com/${sha256Hex}`,
+      name: "GitHub Commit Author Discovery",
+      category: "code",
+      url: `https://github.com/search?q=author-email%3A%22${encodeURIComponent(cleaned)}%22&type=commits`,
       status: "candidate" as const,
-      detail: `Inspect globally recognized avatar (Gravatar) and linked profile bio for ${cleaned}.`,
+      detail: `Search public Git commits authored by ${cleaned} across millions of open-source repositories.`,
+      icon: "github.com",
+    },
+    {
+      name: "Gravatar Digital Profile & Avatar",
+      category: "identity",
+      url: profileUrl,
+      status: "candidate" as const,
+      detail: `Inspect globally recognized avatar (Gravatar) and linked public profile for ${cleaned}.`,
       icon: "gravatar.com",
     },
     {
-      name: "Google Account Presence",
-      category: "Identity",
+      name: "Google Account Ecosystem",
+      category: "identity",
       url: `https://contacts.google.com`,
       status: "candidate" as const,
       detail: domain.includes("gmail.com") 
-        ? `Primary Google Account identifier (@${domain}). Active on Google Play, YouTube, and Drive.` 
-        : `Check if ${domain} is hosted on Google Workspace.`,
+        ? `Primary Google Account identifier (@${domain}). Active on Google Play, YouTube, Google Drive.` 
+        : `Check whether enterprise domain ${domain} delegates to Google Workspace.`,
       icon: "google.com",
     },
     {
-      name: "HaveIBeenPwned Breach Check",
-      category: "Breach Records",
+      name: "HaveIBeenPwned Breach Records",
+      category: "security",
       url: `https://haveibeenpwned.com/account/${encodeURIComponent(cleaned)}`,
       status: "candidate" as const,
-      detail: `Check if ${cleaned} has been exposed in publicly indexed historical data breaches.`,
+      detail: `Audit whether ${cleaned} appeared in known historical database dumps or credential leaks.`,
       icon: "haveibeenpwned.com",
     },
     {
-      name: "Domain & DNS / MX Intelligence",
-      category: "Domain Infrastructure",
+      name: "Domain Infrastructure & MX Security",
+      category: "domain",
       url: `https://whois.domaintools.com/${encodeURIComponent(domain)}`,
       status: "candidate" as const,
-      detail: `Query authoritative MX mail exchanges, SPF records, and WHOIS registration for @${domain}.`,
+      detail: `Query authoritative mail exchanges (MX), SPF anti-spoofing policies, and WHOIS registration for @${domain}.`,
       icon: "domaintools.com",
     }
   ];
@@ -105,9 +128,11 @@ export async function analyzeEmail(email: string): Promise<EmailResult> {
     domain,
     provider,
     isFreeProvider,
+    isDisposable,
     gravatar: {
       hasAvatar: true,
       avatarUrl,
+      profileUrl,
     },
     pivots,
   };

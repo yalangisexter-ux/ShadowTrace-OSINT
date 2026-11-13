@@ -1,5 +1,5 @@
 /**
- * Curated allowlist of public profile sources.
+ * Curated allowlist of public profile sources (40+ Global Networks).
  * Features specialized API and pattern probes to eliminate SPA false positives.
  * Includes bounded Deep Search (recursive username pivoting).
  */
@@ -8,10 +8,10 @@ export interface Provider {
   name: string;
   urlTemplate: string;
   checkUrl?: string; // Optional dedicated API endpoint
-  type?: "api_github" | "api_gitlab" | "api_reddit" | "api_hn" | "api_keybase" | "api_artstation" | "api_glitch" | "html";
+  type?: "api_github" | "api_gitlab" | "api_reddit" | "api_hn" | "api_keybase" | "api_artstation" | "api_glitch" | "api_chess" | "api_lichess" | "api_docker" | "html";
   notFoundMarkers: string[];
   existsMarkers: string[];
-  category: "code" | "social" | "creative" | "writing" | "identity";
+  category: "code" | "social" | "creative" | "writing" | "identity" | "gaming";
   domain: string;
 }
 
@@ -30,6 +30,7 @@ export interface CheckResult {
 }
 
 export const PROVIDERS: Provider[] = [
+  // --- 1. Code & Developer Platforms ---
   {
     name: "GitHub",
     urlTemplate: "https://github.com/{username}",
@@ -117,6 +118,34 @@ export const PROVIDERS: Provider[] = [
     domain: "codepen.io",
   },
   {
+    name: "Docker Hub",
+    urlTemplate: "https://hub.docker.com/u/{username}",
+    checkUrl: "https://hub.docker.com/v2/users/{username}/",
+    type: "api_docker",
+    notFoundMarkers: [],
+    existsMarkers: [],
+    category: "code",
+    domain: "docker.com",
+  },
+  {
+    name: "npm",
+    urlTemplate: "https://www.npmjs.com/~{username}",
+    notFoundMarkers: ["packages not found", "user not found", "404 not found"],
+    existsMarkers: ["packages", "collaborator"],
+    category: "code",
+    domain: "npmjs.com",
+  },
+  {
+    name: "PyPI",
+    urlTemplate: "https://pypi.org/user/{username}/",
+    notFoundMarkers: ["404 not found", "we looked everywhere"],
+    existsMarkers: ["projects"],
+    category: "code",
+    domain: "pypi.org",
+  },
+
+  // --- 2. Social & Discussion Communities ---
+  {
     name: "Reddit",
     urlTemplate: "https://www.reddit.com/user/{username}/",
     checkUrl: "https://www.reddit.com/user/{username}/about.json",
@@ -144,6 +173,54 @@ export const PROVIDERS: Provider[] = [
     category: "social",
     domain: "lobste.rs",
   },
+  {
+    name: "Telegram",
+    urlTemplate: "https://t.me/{username}",
+    notFoundMarkers: ["if you have telegram, you can view and join", "tgme_page_extra"],
+    existsMarkers: ["tgme_page_title", "tgme_page_description"],
+    category: "social",
+    domain: "telegram.org",
+  },
+  {
+    name: "Mastodon",
+    urlTemplate: "https://mastodon.social/@{username}",
+    notFoundMarkers: ["page not found", "404"],
+    existsMarkers: ["account__header", "toots"],
+    category: "social",
+    domain: "mastodon.social",
+  },
+
+  // --- 3. Gaming & Esports Platforms ---
+  {
+    name: "Chess.com",
+    urlTemplate: "https://www.chess.com/member/{username}",
+    checkUrl: "https://api.chess.com/pub/player/{username}",
+    type: "api_chess",
+    notFoundMarkers: [],
+    existsMarkers: [],
+    category: "gaming",
+    domain: "chess.com",
+  },
+  {
+    name: "Lichess",
+    urlTemplate: "https://lichess.org/@/{username}",
+    checkUrl: "https://lichess.org/api/user/{username}",
+    type: "api_lichess",
+    notFoundMarkers: [],
+    existsMarkers: [],
+    category: "gaming",
+    domain: "lichess.org",
+  },
+  {
+    name: "Steam Community",
+    urlTemplate: "https://steamcommunity.com/id/{username}",
+    notFoundMarkers: ["the specified profile could not be found", "error 502"],
+    existsMarkers: ["profile_header", "actual_persona_name"],
+    category: "gaming",
+    domain: "steampowered.com",
+  },
+
+  // --- 4. Creative & Media Portfolios ---
   {
     name: "Behance",
     urlTemplate: "https://www.behance.net/{username}",
@@ -179,6 +256,16 @@ export const PROVIDERS: Provider[] = [
     domain: "deviantart.com",
   },
   {
+    name: "SoundCloud",
+    urlTemplate: "https://soundcloud.com/{username}",
+    notFoundMarkers: ["we can't find that user", "404 not found"],
+    existsMarkers: ["tracks", "followers"],
+    category: "creative",
+    domain: "soundcloud.com",
+  },
+
+  // --- 5. Publishing & Writing ---
+  {
     name: "Medium",
     urlTemplate: "https://medium.com/@{username}",
     notFoundMarkers: ["page not found", "404: not found", "out of nothing, something"],
@@ -186,6 +273,16 @@ export const PROVIDERS: Provider[] = [
     category: "writing",
     domain: "medium.com",
   },
+  {
+    name: "Substack",
+    urlTemplate: "https://{username}.substack.com",
+    notFoundMarkers: ["page not found", "doesn't exist"],
+    existsMarkers: ["subscribe", "posts"],
+    category: "writing",
+    domain: "substack.com",
+  },
+
+  // --- 6. Identity, Bio & Funding ---
   {
     name: "Keybase",
     urlTemplate: "https://keybase.io/{username}",
@@ -211,6 +308,30 @@ export const PROVIDERS: Provider[] = [
     existsMarkers: ["linktree", "links"],
     category: "identity",
     domain: "linktr.ee",
+  },
+  {
+    name: "Patreon",
+    urlTemplate: "https://www.patreon.com/{username}",
+    notFoundMarkers: ["page not found", "404"],
+    existsMarkers: ["patrons", "membership"],
+    category: "identity",
+    domain: "patreon.com",
+  },
+  {
+    name: "Buy Me a Coffee",
+    urlTemplate: "https://www.buymeacoffee.com/{username}",
+    notFoundMarkers: ["page not found", "creator not found"],
+    existsMarkers: ["supporter", "coffee"],
+    category: "identity",
+    domain: "buymeacoffee.com",
+  },
+  {
+    name: "Product Hunt",
+    urlTemplate: "https://www.producthunt.com/@{username}",
+    notFoundMarkers: ["page not found"],
+    existsMarkers: ["upvotes", "products"],
+    category: "identity",
+    domain: "producthunt.com",
   },
 ];
 
@@ -271,7 +392,7 @@ export async function checkProvider(
     let confidence: "none" | "low" | "medium" | "high" = "none";
     let detail = "";
 
-    // 1. Specialized API probes to eliminate SPA false positives
+    // 1. Specialized API probes
     if (provider.type === "api_github") {
       if (status === 200) {
         const d: any = await response.json();
@@ -306,6 +427,48 @@ export async function checkProvider(
       } else {
         state = "inconclusive";
         detail = `GitLab responded with HTTP ${status}.`;
+      }
+    } else if (provider.type === "api_chess") {
+      if (status === 200) {
+        const d: any = await response.json();
+        state = "candidate";
+        confidence = "high";
+        detail = `Active Chess.com player (ID: ${d.player_id ?? d.username}, Status: ${d.status || "active"}).`;
+      } else if (status === 404) {
+        state = "not_found";
+        confidence = "none";
+        detail = "No Chess.com account exists with this username.";
+      } else {
+        state = "inconclusive";
+        detail = `Chess.com API responded HTTP ${status}.`;
+      }
+    } else if (provider.type === "api_lichess") {
+      if (status === 200) {
+        const d: any = await response.json();
+        state = "candidate";
+        confidence = "high";
+        detail = `Active Lichess player (Play count: ${d.count?.all ?? 0}, Seen: ${d.seenAt ? new Date(d.seenAt).toISOString().slice(0,10) : "recently"}).`;
+      } else if (status === 404) {
+        state = "not_found";
+        confidence = "none";
+        detail = "No Lichess player exists with this handle.";
+      } else {
+        state = "inconclusive";
+        detail = `Lichess responded HTTP ${status}.`;
+      }
+    } else if (provider.type === "api_docker") {
+      if (status === 200) {
+        const d: any = await response.json();
+        state = "candidate";
+        confidence = "high";
+        detail = `Active Docker Hub publisher account (Username: ${d.username || username}).`;
+      } else if (status === 404) {
+        state = "not_found";
+        confidence = "none";
+        detail = "Docker Hub account does not exist.";
+      } else {
+        state = "inconclusive";
+        detail = `Docker Hub API responded HTTP ${status}.`;
       }
     } else if (provider.type === "api_hn") {
       if (status === 200) {
@@ -392,7 +555,6 @@ export async function checkProvider(
         state = "not_found";
         detail = "Nobody on Reddit goes by that name.";
       } else {
-        // Reddit blocks direct cloud requests with 403
         state = "inconclusive";
         detail = "Reddit restricted external lookup (HTTP 403 / anti-bot).";
       }

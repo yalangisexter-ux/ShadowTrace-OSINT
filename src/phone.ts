@@ -1,5 +1,7 @@
 /**
  * Telecom & Digital Phone Footprint Intelligence Engine
+ * ITU-T / E.164 normalization, carrier lookup, circle detection,
+ * WhatsApp/Telegram/Truecaller deep hooks, and UPI financial handles.
  */
 
 export interface PhoneResult {
@@ -44,22 +46,24 @@ const INDIA_CIRCLES: Record<string, { region: string; carrier: string }> = {
   "9831": { region: "Kolkata", carrier: "Bharti Airtel" },
   "9829": { region: "Rajasthan", carrier: "Bharti Airtel" },
   "9826": { region: "Madhya Pradesh", carrier: "Bharti Airtel" },
+  "9412": { region: "Uttar Pradesh (West)", carrier: "BSNL Mobile" },
+  "9415": { region: "Uttar Pradesh (East)", carrier: "BSNL Mobile" },
 };
 
 export function analyzePhoneNumber(input: string): PhoneResult {
   const cleaned = input.trim();
   const digits = cleaned.replace(/\D/g, "");
 
-  let country = "Unknown";
-  let countryCode = "";
+  let country = "International";
+  let countryCode = "+";
   let formatted = cleaned;
   let e164 = "";
-  let region = "Global";
-  let carrier = "Mobile / Landline Operator";
+  let region = "Global Network";
+  let carrier = "Mobile Network Operator";
   let lineType: "Mobile" | "Fixed Line" | "VoIP" | "Toll Free" | "Unknown" = "Unknown";
   let timezone = "UTC";
 
-  // Check Indian mobile number (10 digits starting with 6-9, or prefixed with 91 or +91)
+  // 1. India (+91)
   if ((digits.length === 10 && /^[6-9]/.test(digits)) ||
       (digits.length === 12 && digits.startsWith("91") && /^[6-9]/.test(digits.slice(2)))) {
     
@@ -74,13 +78,13 @@ export function analyzePhoneNumber(input: string): PhoneResult {
     const prefix4 = national10.slice(0, 4);
     if (INDIA_CIRCLES[prefix4]) {
       region = INDIA_CIRCLES[prefix4].region;
-      carrier = `${INDIA_CIRCLES[prefix4].carrier} (Original allocation)`;
+      carrier = `${INDIA_CIRCLES[prefix4].carrier} (Original circle series)`;
     } else {
       region = "India National Telecom Network";
-      carrier = "Major GSM Operator (Jio / Airtel / Vi / BSNL)";
+      carrier = "GSM Wireless Operator (Jio / Airtel / Vi / BSNL)";
     }
   }
-  // North American Numbering Plan (+1 US/Canada)
+  // 2. North America (+1 US/Canada)
   else if ((digits.length === 10 && /^[2-9]/.test(digits)) ||
            (digits.length === 11 && digits.startsWith("1"))) {
     const national10 = digits.length === 11 ? digits.slice(1) : digits;
@@ -89,11 +93,11 @@ export function analyzePhoneNumber(input: string): PhoneResult {
     e164 = `+1${national10}`;
     formatted = `+1 (${national10.slice(0, 3)}) ${national10.slice(3, 6)}-${national10.slice(6)}`;
     lineType = "Mobile";
-    region = `North America (Area Code ${national10.slice(0, 3)})`;
-    carrier = "Wireless / Landline Carrier";
-    timezone = "US/Canada Timezones (UTC-5 to UTC-8)";
+    region = `North American Area Code ${national10.slice(0, 3)}`;
+    carrier = "Cellular / Landline Carrier";
+    timezone = "US/Canada (EST/CST/MST/PST)";
   }
-  // United Kingdom (+44)
+  // 3. United Kingdom (+44)
   else if (digits.startsWith("44") && digits.length >= 11) {
     country = "United Kingdom";
     countryCode = "+44";
@@ -101,22 +105,45 @@ export function analyzePhoneNumber(input: string): PhoneResult {
     formatted = `+44 ${digits.slice(2, 6)} ${digits.slice(6)}`;
     lineType = "Mobile";
     region = "United Kingdom Telecom Network";
-    carrier = "UK Mobile Network (EE / O2 / Vodafone / Three)";
+    carrier = "UK Mobile Carrier (EE / O2 / Vodafone / Three)";
     timezone = "Europe/London (GMT/BST)";
-  } else {
+  }
+  // 4. Australia (+61)
+  else if (digits.startsWith("61") && digits.length >= 10) {
+    country = "Australia";
+    countryCode = "+61";
+    e164 = `+${digits}`;
+    formatted = `+61 ${digits.slice(2)}`;
+    lineType = "Mobile";
+    region = "Australia Telecom Network";
+    carrier = "Telstra / Optus / Vodafone";
+    timezone = "Australia (AEST, UTC+10)";
+  }
+  // 5. United Arab Emirates (+971)
+  else if (digits.startsWith("971") && digits.length >= 11) {
+    country = "United Arab Emirates";
+    countryCode = "+971";
+    e164 = `+${digits}`;
+    formatted = `+971 ${digits.slice(3)}`;
+    lineType = "Mobile";
+    region = "UAE Telecom Network";
+    carrier = "e& (Etisalat) / du";
+    timezone = "Asia/Dubai (GST, UTC+4)";
+  }
+  else {
     e164 = `+${digits}`;
     formatted = `+${digits}`;
     countryCode = "+" + digits.slice(0, 3);
   }
 
-  // Digital Messaging & Identity Pivots
+  // Messaging & Identity Hooks
   const rawCleanedDigits = e164.replace(/\D/g, "");
-  const platforms = [
+  const platforms: PhoneResult["platforms"] = [
     {
       name: "WhatsApp Messenger",
       category: "Messaging",
       url: `https://wa.me/${rawCleanedDigits}`,
-      status: "candidate" as const,
+      status: "candidate",
       detail: `Direct messaging hook for ${formatted}. Tap to verify active WhatsApp account / profile picture.`,
       icon: "whatsapp.com"
     },
@@ -124,17 +151,17 @@ export function analyzePhoneNumber(input: string): PhoneResult {
       name: "Telegram Messenger",
       category: "Messaging",
       url: `https://t.me/+${rawCleanedDigits}`,
-      status: "candidate" as const,
+      status: "candidate",
       detail: `Direct user hook on Telegram network for ${formatted}.`,
       icon: "telegram.org"
     },
     {
       name: "Truecaller Directory",
-      category: "Caller ID & Spam",
+      category: "Identity",
       url: country === "India" 
         ? `https://www.truecaller.com/search/in/${digits.slice(-10)}` 
         : `https://www.truecaller.com/search/global/${rawCleanedDigits}`,
-      status: "candidate" as const,
+      status: "candidate",
       detail: `Query community caller ID, associated identity names, and spam reputation for ${formatted}.`,
       icon: "truecaller.com"
     }
@@ -146,25 +173,25 @@ export function analyzePhoneNumber(input: string): PhoneResult {
     platforms.push(
       {
         name: "Paytm Payments (UPI)",
-        category: "Financial / UPI",
+        category: "Financial",
         url: `https://paytm.com`,
-        status: "candidate" as const,
+        status: "candidate",
         detail: `Associated VPA: ${national10}@paytm. Common default UPI handle for this mobile number.`,
         icon: "paytm.com"
       },
       {
         name: "Google Pay (UPI / Axis)",
-        category: "Financial / UPI",
+        category: "Financial",
         url: `https://pay.google.com`,
-        status: "candidate" as const,
+        status: "candidate",
         detail: `Associated VPA: ${national10}@okaxis or ${national10}@oksbi.`,
         icon: "google.com"
       },
       {
         name: "PhonePe (UPI / YBL)",
-        category: "Financial / UPI",
+        category: "Financial",
         url: `https://phonepe.com`,
-        status: "candidate" as const,
+        status: "candidate",
         detail: `Associated VPA: ${national10}@ybl / ${national10}@ibl.`,
         icon: "phonepe.com"
       }
@@ -172,7 +199,7 @@ export function analyzePhoneNumber(input: string): PhoneResult {
   }
 
   return {
-    number: input,
+    number: cleaned,
     formatted,
     e164,
     country,
@@ -181,6 +208,6 @@ export function analyzePhoneNumber(input: string): PhoneResult {
     carrier,
     lineType,
     timezone,
-    platforms
+    platforms,
   };
 }

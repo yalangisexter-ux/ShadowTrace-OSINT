@@ -1,92 +1,121 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { secureHeaders } from "hono/secure-headers";
 import {
-  PROVIDERS,
   providerCount,
   searchUsername,
   validateUsername,
-  type CheckResult,
+  CheckResult,
 } from "./providers";
 import { analyzePhoneNumber } from "./phone";
 import { analyzeEmail } from "./email";
+import { analyzeDomain } from "./domain";
 import {
-  createAccessToken,
-  decodeAccessToken,
   hashPassword,
   verifyPassword,
+  createAccessToken,
+  decodeAccessToken,
 } from "./security";
 import {
-  createUser,
-  createSearchRun,
   ensureSchema,
-  getRunDetails,
+  createUser,
   getUserByEmail,
   getUserById,
+  createSearchRun,
   listUserRuns,
-  type UserRow,
+  getRunDetails,
+  UserRow,
 } from "./db";
 
 export interface Env {
   DB: D1Database;
+  ASSETS?: Fetcher;
   SECRET_KEY?: string;
   APP_ENV?: string;
   ACCESS_TOKEN_MINUTES?: string;
-  CORS_ORIGINS?: string;
-  ASSETS?: Fetcher;
 }
 
-type Variables = {
-  user: UserRow;
-};
+const app = new Hono<{ Bindings: Env }>();
 
-const app = new Hono<{ Bindings: Env; Variables: Variables }>();
+// Security headers
+app.use(
+  "*",
+  secureHeaders({
+    contentSecurityPolicy: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      fontSrc: ["'self'", "https://fonts.gstatic.com"],
+      imgSrc: ["'self'", "data:", "https://*"],
+      connectSrc: ["'self'", "https://*"],
+      frameAncestors: ["'none'"],
+    },
+    xFrameOptions: "DENY",
+    xContentTypeOptions: "nosniff",
+    referrerPolicy: "strict-origin-when-cross-origin",
+  })
+);
 
-app.onError((err, c) => {
-  console.error("Unhandled error:", err);
-  return c.json({ detail: err.message || "Internal server error" }, 500);
-});
+// Global CORS allowlist
+app.use(
+  "/api/*",
+  cors({
+    origin: (origin) => {
+      if (!origin) return "*";
+      if (
+        origin.endsWith(".workers.dev") ||
+        origin.endsWith(".pages.dev") ||
+        origin === "http://localhost:8787" ||
+        origin === "http://127.0.0.1:8787" ||
+        origin === "http://localhost:3000"
+      ) {
+        return origin;
+      }
+      return "*";
+    },
+    allowMethods: ["GET", "POST", "OPTIONS"],
+    allowHeaders: ["Content-Type", "Authorization"],
+    maxAge: 86400,
+  })
+);
 
-// Simple in-memory sliding window rate limiter
-const attempts = new Map<string, number[]>();
+// In-memory rate limiting bucket
+const rateBuckets = new Map<string, { count: number; resetAt: number }>();
 
 function throttle(key: string, limit: number, windowSeconds: number): void {
-  const now = Date.now() / 1000;
-  let q = attempts.get(key) || [];
-  q = q.filter((t) => now - t <= windowSeconds);
-  if (q.length >= limit) {
-    throw new Error("Too many requests. Try again shortly.");
+  const now = Date.now();
+  const bucket = rateBuckets.get(key);
+  if (!bucket || now > bucket.resetAt) {
+    rateBuckets.set(key, { count: 1, resetAt: now + windowSeconds * 1000 });
+    return;
   }
-  q.push(now);
-  attempts.set(key, q);
+  if (bucket.count >= limit) {
+    const retryAfter = Math.ceil((bucket.resetAt - now) / 1000);
+    throw new Error(`Rate limit exceeded. Try again in ${retryAfter}s`);
+  }
+  bucket.count++;
 }
 
-// CORS Middleware
-app.use("*", async (c, next) => {
-  const origins = (c.env.CORS_ORIGINS || "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-
-  if (origins.length > 0) {
-    return cors({
-      origin: origins,
-      allowHeaders: ["Authorization", "Content-Type"],
-      allowMethods: ["GET", "POST", "OPTIONS"],
-      credentials: true,
-    })(c, next);
-  }
-  await next();
+// Global error handler
+app.onError((err, c) => {
+  console.error("Unhandled Worker Exception:", err);
+  const status = (c.res?.status && c.res.status >= 400 && c.res.status < 600) ? c.res.status : 500;
+  return c.json({
+    detail: err.message || "Internal server error occurred",
+    status: "error",
+    timestamp: new Date().toISOString()
+  }, status as any);
 });
 
-// Middleware: auto ensure schema exists in D1
+// Middleware: auto-initialize D1 schema on first request
 let schemaInitialized = false;
-app.use("/api/*", async (c, next) => {
+app.use("*", async (c, next) => {
   if (!schemaInitialized && c.env.DB) {
     try {
       await ensureSchema(c.env.DB);
       schemaInitialized = true;
     } catch (e) {
-      console.error("DB init error:", e);
+      console.error("Schema init warning:", e);
     }
   }
   await next();
@@ -124,18 +153,49 @@ async function requireAuth(c: any): Promise<UserRow> {
 // Email regex
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+// Calculate Digital Threat & Attack Surface Score
+function calculateThreatMatrix(results: CheckResult[], queryType: string) {
+  const candidates = results.filter((r) => r.status === "candidate");
+  const candidateCount = candidates.length;
+
+  let baseScore = 0;
+  if (queryType === "phone") {
+    baseScore = Math.min(95, 30 + candidateCount * 10);
+  } else if (queryType === "email") {
+    baseScore = Math.min(90, 25 + candidateCount * 11);
+  } else if (queryType === "domain") {
+    const hasSpfIssue = results.some((r) => r.detail.includes("MISSING"));
+    baseScore = hasSpfIssue ? 65 : 20;
+  } else {
+    baseScore = Math.min(95, candidateCount * 12);
+  }
+
+  let threatLevel: "LOW" | "MODERATE" | "ELEVATED" | "HIGH" | "CRITICAL" = "LOW";
+  if (baseScore >= 75) threatLevel = "CRITICAL";
+  else if (baseScore >= 55) threatLevel = "HIGH";
+  else if (baseScore >= 35) threatLevel = "ELEVATED";
+  else if (baseScore >= 15) threatLevel = "MODERATE";
+
+  return {
+    score: baseScore,
+    level: threatLevel,
+    exposure_summary: `${candidateCount} public identity anchors indexed`,
+    credential_reuse_risk: candidateCount > 2 ? "High (Multiple identical platform handles)" : "Low / Isolated",
+    phishing_surface: queryType === "email" || queryType === "phone" ? "High (Direct communication vector)" : "Moderate",
+  };
+}
+
 // Health check endpoint
 app.get("/healthz", async (c) => {
   const secretKey = getSecretKey(c.env);
-  const secretOk =
-    secretKey !== "local-development-only-change-me" && secretKey.length >= 32;
+  const secretOk = secretKey.length >= 32;
   const dbOk = Boolean(c.env.DB);
   const status = secretOk && dbOk ? "ok" : "degraded";
 
   return c.json({
     status,
     service: "shadowtrace-osint",
-    version: "0.2.0-cloudflare",
+    version: "0.3.0-cloudflare",
     providers: providerCount(),
     time: new Date().toISOString(),
     config: {
@@ -245,7 +305,7 @@ app.get("/api/v1/auth/me", async (c) => {
   });
 });
 
-// Search: Multi-Modal OSINT Investigation (Username, Phone, Email)
+// Search: Multi-Modal OSINT Investigation (Username, Phone, Email, Domain)
 app.post("/api/v1/search/username", async (c) => {
   let body: any = {};
   try {
@@ -255,7 +315,20 @@ app.post("/api/v1/search/username", async (c) => {
   }
 
   const rawQuery = String(body.username || body.query || "").trim();
-  const searchType = body.type || (rawQuery.includes("@") ? "email" : (/^\+?\d{8,15}$/.test(rawQuery.replace(/[\s-]/g, "")) ? "phone" : "username"));
+  let searchType = body.type;
+
+  // Auto-detect type if not explicitly supplied
+  if (!searchType) {
+    if (rawQuery.includes("@")) {
+      searchType = "email";
+    } else if (/^\+?\d{8,15}$/.test(rawQuery.replace(/[\s-]/g, ""))) {
+      searchType = "phone";
+    } else if (/^[a-zA-Z0-9-]+\.[a-zA-Z]{2,}$/.test(rawQuery)) {
+      searchType = "domain";
+    } else {
+      searchType = "username";
+    }
+  }
 
   // Check if authenticated
   let user: UserRow | null = null;
@@ -276,9 +349,9 @@ app.post("/api/v1/search/username", async (c) => {
   const clientIp = c.req.header("cf-connecting-ip") || "anon";
   try {
     if (user) {
-      throttle(`search:user:${user.id}`, 8, 60);
+      throttle(`search:user:${user.id}`, 15, 60);
     } else {
-      throttle(`search:guest:${clientIp}`, 12, 60);
+      throttle(`search:guest:${clientIp}`, 20, 60);
     }
   } catch (err: any) {
     return c.json({ detail: err.message }, 429);
@@ -292,7 +365,6 @@ app.post("/api/v1/search/username", async (c) => {
     const phoneData = analyzePhoneNumber(rawQuery);
     queryLabel = phoneData.formatted;
 
-    // Carrier & Telecom Info Card
     results.push({
       provider: `${phoneData.country} Telecom Authority`,
       category: "identity",
@@ -305,7 +377,6 @@ app.post("/api/v1/search/username", async (c) => {
       checked_at: new Date().toISOString(),
     });
 
-    // Associated platforms & messaging hooks
     for (const p of phoneData.platforms) {
       results.push({
         provider: p.name,
@@ -340,7 +411,7 @@ app.post("/api/v1/search/username", async (c) => {
     for (const p of emailData.pivots) {
       results.push({
         provider: p.name,
-        category: p.category.toLowerCase().includes("code") ? "code" : "identity",
+        category: p.category.toLowerCase().includes("code") ? "code" : (p.category.toLowerCase().includes("sec") ? "identity" : "identity"),
         profile_url: p.url,
         domain: p.icon,
         status: p.status === "verified" ? "candidate" : p.status,
@@ -351,7 +422,23 @@ app.post("/api/v1/search/username", async (c) => {
       });
     }
   }
-  // 3. Username Intelligence across 21 Sources
+  // 3. Domain & Infrastructure OSINT
+  else if (searchType === "domain") {
+    const domainData = await analyzeDomain(rawQuery);
+    queryLabel = domainData.domain;
+    results = domainData.evidence.map((e) => ({
+      provider: e.provider,
+      category: e.category,
+      profile_url: e.profile_url,
+      domain: e.domain,
+      status: e.status,
+      http_status: e.http_status,
+      confidence: e.confidence,
+      detail: e.detail,
+      checked_at: e.checked_at,
+    }));
+  }
+  // 4. Username Intelligence across 40+ Sources
   else {
     let username: string;
     try {
@@ -360,10 +447,12 @@ app.post("/api/v1/search/username", async (c) => {
       return c.json({ detail: err.message }, 422);
     }
     queryLabel = username;
-    results = await searchUsername(username);
+    const depth = parseInt(body.depth || "0", 10) || 0;
+    results = await searchUsername(username, depth);
   }
 
   const candidates = results.filter((r) => r.status === "candidate").length;
+  const threatMatrix = calculateThreatMatrix(results, searchType);
   let runId = Date.now();
   let createdAt = new Date().toISOString();
 
@@ -385,6 +474,7 @@ app.post("/api/v1/search/username", async (c) => {
         candidates,
         providers: results.length,
       },
+      threat_matrix: threatMatrix,
       evidence: results,
       notice:
         "Candidate matches are not identity verification. Review each source manually.",
@@ -450,7 +540,7 @@ app.get("/api/v1/search/runs/:run_id", async (c) => {
   });
 });
 
-// Search: Markdown report export (supports query token & Bearer header)
+// Search: Markdown report export
 app.get("/api/v1/search/runs/:run_id/report.md", async (c) => {
   const authHeader = c.req.header("Authorization");
   const queryToken = c.req.query("token");
@@ -483,13 +573,13 @@ app.get("/api/v1/search/runs/:run_id/report.md", async (c) => {
   }
 
   const lines = [
-    `# ShadowTrace Investigation Report`,
+    `# ShadowTrace Executive OSINT Intelligence Report`,
     ``,
-    `**Query:** \`${data.run.query_value}\` (${data.run.query_type})`,
-    `**Run ID:** ${data.run.id}`,
-    `**Created:** ${data.run.created_at}`,
+    `**Target Query:** \`${data.run.query_value}\` (${data.run.query_type})`,
+    `**Investigation Run ID:** #${data.run.id}`,
+    `**Generated At:** ${data.run.created_at}`,
     ``,
-    `## Results`,
+    `## Evidence & Digital Footprint Findings`,
     ``,
   ];
 
@@ -501,20 +591,18 @@ app.get("/api/v1/search/runs/:run_id/report.md", async (c) => {
   });
 
   for (const e of sortedEvidence) {
-    lines.push(`### ${e.provider}`);
-    lines.push(`- Status: **${e.status}** (confidence: ${e.confidence})`);
-    lines.push(`- URL: ${e.profile_url}`);
-    lines.push(`- HTTP: ${e.http_status ?? "—"}`);
-    lines.push(`- Detail: ${e.detail}`);
-    lines.push(`- Checked: ${e.checked_at}`);
+    lines.push(`### ${e.provider} [${e.category.toUpperCase()}]`);
+    lines.push(`- Status: **${e.status.toUpperCase()}** (Confidence: ${e.confidence})`);
+    lines.push(`- Direct URL: ${e.profile_url}`);
+    lines.push(`- HTTP Response: ${e.http_status ?? "—"}`);
+    lines.push(`- Intelligence: ${e.detail}`);
+    lines.push(`- Timestamp: ${e.checked_at}`);
     lines.push(``);
   }
 
   lines.push(`---`);
-  lines.push(
-    `Candidate matches are not proof of identity. Manually verify every source.`
-  );
-  lines.push(`Generated by ShadowTrace OSINT on Cloudflare Workers — public-source only.`);
+  lines.push(`Candidate records are derived from public OSINT telemetry. Manually verify identity ownership before acting on evidence.`);
+  lines.push(`Generated by ShadowTrace OSINT Engine on Cloudflare Workers.`);
 
   return c.text(lines.join("\n"), 200, {
     "Content-Type": "text/markdown; charset=utf-8",
