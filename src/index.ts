@@ -121,6 +121,22 @@ app.use("*", async (c, next) => {
   await next();
 });
 
+// Root route: serve frontend with strict no-cache headers to prevent stale browser cache
+app.get("/", async (c) => {
+  if (c.env.ASSETS) {
+    const res = await c.env.ASSETS.fetch(c.req.raw);
+    const newHeaders = new Headers(res.headers);
+    newHeaders.set("Cache-Control", "no-cache, no-store, must-revalidate");
+    newHeaders.set("Pragma", "no-cache");
+    newHeaders.set("Expires", "0");
+    return new Response(res.body, {
+      status: res.status,
+      headers: newHeaders,
+    });
+  }
+  return c.text("ShadowTrace OSINT", 200);
+});
+
 // Helper: resolve secret key
 const DEFAULT_FALLBACK_SECRET = "st_live_cf_89f02e64a138bb92c7104d538e11a2f90b";
 function getSecretKey(env: Env): string {
