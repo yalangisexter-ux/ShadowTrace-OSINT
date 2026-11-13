@@ -16,3 +16,4 @@ migrations_dir = "migrations"
 [vars]
 APP_ENV = "production"
 ACCESS_TOKEN_MINUTES = "60"
+SECRET_KEY = "st_live_cf_89f02e64a138bb92c7104d538e19c0a6b4e7123d90f23491a82"
