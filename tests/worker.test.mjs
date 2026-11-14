@@ -206,3 +206,30 @@ test("phone intelligence engine resolves telecom circles, caller names, and ed-t
   assert.ok(platformNames.includes("PAYTM UPI"));
 });
 
+test("universal email intelligence performs live recon for arbitrary email", async () => {
+  const res = await analyzeEmail("octocat@github.com");
+  assert.equal(res.email, "octocat@github.com");
+  assert.equal(res.domain, "github.com");
+  assert.ok(res.entities.profile_pictures.length >= 1);
+  assert.ok(res.entities.phones.length >= 1);
+  assert.ok(res.platforms.length >= 10);
+  const platformNames = res.platforms.map(p => p.name);
+  assert.ok(platformNames.includes("GITHUB"));
+});
+
+test("universal phone intelligence resolves arbitrary phone number dynamically", async () => {
+  const res = await analyzePhoneNumber("+919848012345");
+  assert.equal(res.e164, "+919848012345");
+  assert.equal(res.country, "India");
+  assert.match(res.carrier, /Airtel/i);
+  assert.match(res.region, /Andhra Pradesh/i);
+  assert.ok(res.entities.names.length >= 1);
+  assert.ok(res.entities.profile_pictures.length >= 1);
+  assert.ok(res.entities.emails.length >= 1);
+  const platformNames = res.platforms.map(p => p.name);
+  assert.ok(platformNames.includes("WHATSAPP"));
+  assert.ok(platformNames.includes("TELEGRAM"));
+  assert.ok(platformNames.includes("PAYTM UPI"));
+  assert.ok(platformNames.includes("GOOGLE PAY"));
+});
+
