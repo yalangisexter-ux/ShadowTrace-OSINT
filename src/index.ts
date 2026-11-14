@@ -11,7 +11,7 @@ import { analyzePhoneNumber } from "./phone";
 import { analyzeEmail } from "./email";
 import { analyzeDomain } from "./domain";
 import { validateSearchInput } from "./search";
-import { consumeRateLimit } from "./ratelimit";
+import { consumeRateLimit, pruneRateLimits } from "./ratelimit";
 import { checkPasswordExposure } from "./breach";
 import {
   hashPassword,
@@ -682,4 +682,9 @@ app.notFound((c) => {
   return c.json({ detail: "Not Found" }, 404);
 });
 
-export default app;
+export default {
+  fetch: (request: Request, env: Env, ctx: ExecutionContext) => app.fetch(request, env, ctx),
+  scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext) {
+    ctx.waitUntil(pruneRateLimits(env.DB));
+  },
+};
