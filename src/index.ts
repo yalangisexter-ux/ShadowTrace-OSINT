@@ -24,6 +24,7 @@ import {
   createUser,
   getUserByEmail,
   getUserById,
+  updatePasswordHash,
   createSearchRun,
   listUserRuns,
   getRunDetails,
@@ -164,33 +165,26 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // Calculate Digital Threat & Attack Surface Score
 function calculateThreatMatrix(results: CheckResult[], queryType: string) {
-  const candidates = results.filter((r) => r.status === "candidate");
-  const candidateCount = candidates.length;
-
+  const verified = results.filter((r) => r.status === "candidate" && r.confidence === "high");
+  const verifiedCount = verified.length;
   let baseScore = 0;
-  if (queryType === "phone") {
-    baseScore = Math.min(95, 30 + candidateCount * 10);
-  } else if (queryType === "email") {
-    baseScore = Math.min(90, 25 + candidateCount * 11);
-  } else if (queryType === "domain") {
+  if (queryType === "domain") {
     const hasSpfIssue = results.some((r) => r.detail.includes("MISSING"));
     baseScore = hasSpfIssue ? 65 : 20;
   } else {
-    baseScore = Math.min(95, candidateCount * 12);
+    baseScore = Math.min(80, verifiedCount * 10);
   }
-
   let threatLevel: "LOW" | "MODERATE" | "ELEVATED" | "HIGH" | "CRITICAL" = "LOW";
   if (baseScore >= 75) threatLevel = "CRITICAL";
   else if (baseScore >= 55) threatLevel = "HIGH";
   else if (baseScore >= 35) threatLevel = "ELEVATED";
   else if (baseScore >= 15) threatLevel = "MODERATE";
-
   return {
     score: baseScore,
     level: threatLevel,
-    exposure_summary: `${candidateCount} public identity anchors indexed`,
-    credential_reuse_risk: candidateCount > 2 ? "High (Multiple identical platform handles)" : "Low / Isolated",
-    phishing_surface: queryType === "email" || queryType === "phone" ? "High (Direct communication vector)" : "Moderate",
+    exposure_summary: `${verifiedCount} high-confidence public identity signals; ${results.length - verifiedCount} unverified or inconclusive records excluded`,
+    credential_reuse_risk: verifiedCount > 2 ? "Potential (multiple verified public accounts; password reuse not established)" : "Not established",
+    phishing_surface: queryType === "email" || queryType === "phone" ? "Potential communication vector; not proof of compromise" : "Moderate",
   };
 }
 
@@ -277,8 +271,12 @@ app.post("/api/v1/auth/login", async (c) => {
   if (!loginLimit.allowed) return c.json({ detail: "Too many sign-in attempts. Try again later.", retry_after: loginLimit.retryAfterSeconds }, 429);
 
   const user = await getUserByEmail(c.env.DB, email);
-  if (!user || !(await verifyPassword(password, user.password_hash))) {
-    return c.json({ detail: "Invalid email or password" }, 401);
+  if (!user || typeof password !== "string") return c.json({ detail: "Invalid email or password" }, 401);
+  const passwordCheck = await verifyPassword(password, user.password_hash);
+  if (!passwordCheck.ok) return c.json({ detail: "Invalid email or password" }, 401);
+  if (passwordCheck.needsRehash) {
+    const upgradedHash = await hashPassword(password);
+    await updatePasswordHash(c.env.DB, user.id, upgradedHash);
   }
 
   const secret = getSecretKey(c.env);
@@ -393,7 +391,7 @@ app.post("/api/v1/search/username", async (c) => {
         domain: p.icon,
         status: p.status === "verified" ? "candidate" : p.status,
         http_status: 200,
-        confidence: "high",
+        confidence: p.status === "verified" ? "high" : p.status === "candidate" ? "low" : "none",
         identity_name: p.identityName,
         identifier_display: `Phone: ${phoneData.formatted}`,
         fields_count: p.fieldsCount || 1,
@@ -408,9 +406,9 @@ app.post("/api/v1/search/username", async (c) => {
       category: "identity",
       profile_url: `tel:${phoneData.e164}`,
       domain: "itu.int",
-      status: "candidate",
+      status: "inconclusive",
       http_status: 200,
-      confidence: "high",
+      confidence: "low",
       identifier_display: `E.164: ${phoneData.e164}`,
       fields_count: 4,
       extra_fields: {
@@ -453,9 +451,9 @@ app.post("/api/v1/search/username", async (c) => {
       category: "identity",
       profile_url: `https://${emailData.domain}`,
       domain: emailData.domain,
-      status: "candidate",
+      status: "inconclusive",
       http_status: 200,
-      confidence: "high",
+      confidence: "low",
       identifier_display: `@${emailData.domain}`,
       fields_count: 3,
       extra_fields: {
