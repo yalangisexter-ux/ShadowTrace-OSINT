@@ -1,8 +1,15 @@
 import { sign, verify } from "hono/jwt";
 
-const PBKDF2_ITERATIONS = 100000;
+export const PASSWORD_HASH_ITERATIONS = 310000;
+const MIN_ACCEPTED_ITERATIONS = 10000;
+const MAX_ACCEPTED_ITERATIONS = 2000000;
 const HEX_32 = /^[0-9a-f]{32}$/i;
 const HEX_64 = /^[0-9a-f]{64}$/i;
+
+export interface PasswordVerification {
+  ok: boolean;
+  needsRehash: boolean;
+}
 
 /** PBKDF2-SHA256 password hashing using the Workers Web Crypto API. */
 export async function hashPassword(password: string): Promise<string> {
@@ -12,26 +19,34 @@ export async function hashPassword(password: string): Promise<string> {
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const keyMaterial = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), { name: "PBKDF2" }, false, ["deriveBits"]);
   const derived = await crypto.subtle.deriveBits(
-    { name: "PBKDF2", salt, iterations: PBKDF2_ITERATIONS, hash: "SHA-256" },
+    { name: "PBKDF2", salt, iterations: PASSWORD_HASH_ITERATIONS, hash: "SHA-256" },
     keyMaterial,
     256
   );
   const toHex = (bytes: Uint8Array) => Array.from(bytes, b => b.toString(16).padStart(2, "0")).join("");
-  return "pbkdf2:sha256:" + PBKDF2_ITERATIONS + "$" + toHex(salt) + "$" + toHex(new Uint8Array(derived));
+  return "pbkdf2:sha256:" + PASSWORD_HASH_ITERATIONS + "$" + toHex(salt) + "$" + toHex(new Uint8Array(derived));
 }
 
-export async function verifyPassword(password: string, stored: string): Promise<boolean> {
+/** Verifies legacy/current PBKDF2 hashes and signals whether a successful login should upgrade them. */
+export async function verifyPassword(password: string, stored: string): Promise<PasswordVerification> {
   try {
-    if (typeof password !== "string" || password.length > 128 || typeof stored !== "string") return false;
-    const parts = stored.split("$");
-    if (parts.length !== 3 || parts[0] !== "pbkdf2:sha256:" + PBKDF2_ITERATIONS) return false;
-    const saltHex = parts[1];
-    const expectedHex = parts[2];
-    if (!HEX_32.test(saltHex) || !HEX_64.test(expectedHex)) return false;
+    if (typeof password !== "string" || password.length > 128 || typeof stored !== "string") {
+      return { ok: false, needsRehash: false };
+    }
+    const match = /^pbkdf2:sha256:(\d+)\$([0-9a-f]{32})\$([0-9a-f]{64})$/i.exec(stored);
+    if (!match) return { ok: false, needsRehash: false };
+
+    const iterations = Number(match[1]);
+    if (!Number.isSafeInteger(iterations) || iterations < MIN_ACCEPTED_ITERATIONS || iterations > MAX_ACCEPTED_ITERATIONS) {
+      return { ok: false, needsRehash: false };
+    }
+
+    const saltHex = match[2];
+    const expectedHex = match[3];
     const salt = new Uint8Array(saltHex.match(/.{2}/g)!.map(byte => Number.parseInt(byte, 16)));
     const keyMaterial = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), { name: "PBKDF2" }, false, ["deriveBits"]);
     const derived = new Uint8Array(await crypto.subtle.deriveBits(
-      { name: "PBKDF2", salt, iterations: PBKDF2_ITERATIONS, hash: "SHA-256" },
+      { name: "PBKDF2", salt, iterations, hash: "SHA-256" },
       keyMaterial,
       256
     ));
@@ -39,9 +54,10 @@ export async function verifyPassword(password: string, stored: string): Promise<
     for (let i = 0; i < derived.length; i++) {
       difference |= derived[i] ^ Number.parseInt(expectedHex.slice(i * 2, i * 2 + 2), 16);
     }
-    return difference === 0;
+    const ok = difference === 0;
+    return { ok, needsRehash: ok && iterations < PASSWORD_HASH_ITERATIONS };
   } catch {
-    return false;
+    return { ok: false, needsRehash: false };
   }
 }
 
