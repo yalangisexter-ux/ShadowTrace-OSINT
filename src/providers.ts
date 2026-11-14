@@ -370,14 +370,12 @@ function decodeHtml(value: string): string {
 }
 
 export function extractProfileSignals(html: string, username: string, baseUrl: string): ProfileSignals {
+  const metaTags = html.match(/<meta\b[^>]*>/gi) || [];
   const meta = (property: string) => {
-    const patterns = [
-      new RegExp("<meta[^>]+(?:property|name)=[\\"']" + property + "[\\"'][^>]+content=[\\"']([^\\"']*)[\\"'][^>]*>", "i"),
-      new RegExp("<meta[^>]+content=[\\"']([^\\"']*)[\\"'][^>]+(?:property|name)=[\\"']" + property + "[\\"'][^>]*>", "i")
-    ];
-    for (const pattern of patterns) {
-      const match = html.match(pattern);
-      if (match?.[1]) return decodeHtml(match[1]);
+    for (const tag of metaTags) {
+      const key = tag.match(/\b(?:property|name)\s*=\s*["']([^"']+)["']/i)?.[1];
+      const value = tag.match(/\bcontent\s*=\s*["']([^"']*)["']/i)?.[1];
+      if (key === property && value) return decodeHtml(value);
     }
     return "";
   };
