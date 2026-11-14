@@ -1,5 +1,5 @@
 /**
- * Curated allowlist of public profile sources (40+ Global Networks).
+ * Curated allowlist of 34 public profile sources.
  * Features specialized API and pattern probes to eliminate SPA false positives.
  * Includes bounded Deep Search (recursive username pivoting).
  */
@@ -411,11 +411,12 @@ export function isSoft404Page(candidateHtml: string, baselineHtml: string): bool
   const candidate = fingerprintHtml(candidateHtml);
   const baseline = fingerprintHtml(baselineHtml);
   if (!baseline.title && baseline.words.size === 0) return false;
-  if (candidate.title && baseline.title && candidate.title === baseline.title) return true;
   if (candidate.words.size < 8 || baseline.words.size < 8) return false;
   let overlap = 0;
   for (const word of candidate.words) if (baseline.words.has(word)) overlap++;
-  return overlap / Math.max(candidate.words.size, baseline.words.size) >= 0.88;
+  const similarity = overlap / Math.max(candidate.words.size, baseline.words.size);
+  if (candidate.title && baseline.title && candidate.title === baseline.title) return similarity >= 0.72;
+  return similarity >= 0.88;
 }
 
 const soft404Baselines = new Map<string, Promise<string | null>>();
