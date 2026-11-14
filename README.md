@@ -86,6 +86,7 @@ npm run deploy
 | POST | `/api/v1/auth/register` | Create analyst account |
 | POST | `/api/v1/auth/login` | Sign in & receive Bearer JWT |
 | GET | `/api/v1/auth/me` | Current account details |
+| POST | `/api/v1/security/password-exposure` | Authenticated k-anonymity password exposure check (sends only a 5-character SHA-1 prefix) |
 | POST | `/api/v1/search/username` | Run concurrent public username checks |
 | GET | `/api/v1/search/runs` | List past investigations |
 | GET | `/api/v1/search/runs/:run_id` | Read detailed investigation evidence |
@@ -97,4 +98,4 @@ npm run deploy
 
 Use ShadowTrace only for legitimate security research and investigations with a lawful basis. Do not use it to stalk, harass, discriminate, expose private individuals, or make consequential decisions about a person. Respect each provider's terms, robots policies, and rate limits.
 
-This build checks only public profile pages. It does **not** access private accounts, bypass authentication, search breached/stolen datasets, enumerate identities by email or phone, infer a person's location, or expose sensitive personal information.
+This build checks public profile pages and provides an optional authenticated Pwned Passwords range check. The password exposure check sends only the first five characters of a SHA-1 digest to the provider; the full password is not sent or stored. It does **not** access private accounts, bypass authentication, download breached/stolen datasets, enumerate identities by email or phone, infer an individual's location, or expose sensitive personal information.
