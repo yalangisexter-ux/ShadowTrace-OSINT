@@ -10,6 +10,7 @@ import {
 import { analyzePhoneNumber } from "./phone";
 import { analyzeEmail } from "./email";
 import { analyzeDomain } from "./domain";
+import { validateSearchInput } from "./search";
 import {
   hashPassword,
   verifyPassword,
@@ -332,21 +333,14 @@ app.post("/api/v1/search/username", async (c) => {
     return c.json({ detail: "Invalid JSON body" }, 400);
   }
 
-  const rawQuery = String(body.username || body.query || "").trim();
-  let searchType = body.type;
-
-  // Auto-detect type if not explicitly supplied
-  if (!searchType) {
-    if (rawQuery.includes("@")) {
-      searchType = "email";
-    } else if (/^\+?\d{8,15}$/.test(rawQuery.replace(/[\s-]/g, ""))) {
-      searchType = "phone";
-    } else if (/^[a-zA-Z0-9-]+\.[a-zA-Z]{2,}$/.test(rawQuery)) {
-      searchType = "domain";
-    } else {
-      searchType = "username";
-    }
+  let validatedQuery: { type: "username" | "phone" | "email" | "domain"; value: string };
+  try {
+    validatedQuery = validateSearchInput(body.username ?? body.query, body.type);
+  } catch (err: any) {
+    return c.json({ detail: err.message || "Invalid search query" }, 422);
   }
+  const rawQuery = validatedQuery.value;
+  const searchType = validatedQuery.type;
 
   // Check if authenticated
   let user: UserRow | null = null;
