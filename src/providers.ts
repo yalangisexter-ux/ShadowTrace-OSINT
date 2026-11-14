@@ -420,22 +420,40 @@ export function isSoft404Page(candidateHtml: string, baselineHtml: string): bool
 }
 
 const soft404Baselines = new Map<string, Promise<string | null>>();
+const SOFT404_CACHE_LIMIT = 256;
+const BASELINE_PROBE_HOSTS = new Set(["codeberg.org", "dev.to", "hashnode.com", "replit.com", "codepen.io", "behance.net"]);
 
-async function getSoft404Baseline(probeUrl: string): Promise<string | null> {
-  const host = new URL(probeUrl).hostname;
-  let pending = soft404Baselines.get(host);
+async function getSoft404Baseline(probeUrl: string, targetUrl: string, username: string): Promise<string | null> {
+  const host = new URL(probeUrl).hostname.toLowerCase().replace(/^www\./, "");
+  const cacheKey = host.endsWith(".substack.com") ? "substack.com" : host;
+  let pending = soft404Baselines.get(cacheKey);
   if (!pending) {
     pending = (async () => {
       try {
-        const baselineUrl = new URL("/.well-known/shadowtrace-missing-" + crypto.randomUUID(), probeUrl).toString();
-        const response = await fetch(baselineUrl, { headers: { "User-Agent": USER_AGENT, "Accept": "text/html,*/*" }, redirect: "follow", signal: AbortSignal.timeout(4500) });
-        if (response.status !== 200 || !response.url) return null;
-        const finalHost = new URL(response.url).hostname.replace(/^www\./, "");
-        if (finalHost !== host.replace(/^www\./, "")) return null;
+        const sentinel = "shadowtrace-missing-" + crypto.randomUUID().replace(/-/g, "");
+        const baselineUrl = host.endsWith(".substack.com")
+          ? "https://substack.com/@" + sentinel
+          : targetUrl.replace(encodeURIComponent(username), encodeURIComponent(sentinel));
+        if (baselineUrl === targetUrl) return null;
+        const response = await fetch(baselineUrl, {
+          headers: { "User-Agent": USER_AGENT, "Accept": "text/html,*/*" },
+          redirect: "follow",
+          signal: AbortSignal.timeout(4500)
+        });
+        if (![200, 404].includes(response.status) || !response.url || !isAllowedFinalUrl(baselineUrl, response.url)) return null;
+        const type = response.headers.get("content-type") || "";
+        if (type && !type.includes("text/html")) return null;
         return (await response.text()).slice(0, 120000);
       } catch { return null; }
     })();
-    soft404Baselines.set(host, pending);
+    soft404Baselines.set(cacheKey, pending);
+    if (soft404Baselines.size > SOFT404_CACHE_LIMIT) {
+      const oldest = soft404Baselines.keys().next().value;
+      if (oldest) soft404Baselines.delete(oldest);
+    }
+  } else {
+    soft404Baselines.delete(cacheKey);
+    soft404Baselines.set(cacheKey, pending);
   }
   return pending;
 }
@@ -761,14 +779,20 @@ export async function checkProvider(
           confidence = "none";
           detail = "Keybase user does not exist.";
         }
-      } else {
+      } else if (status === 404) {
         state = "not_found";
+        confidence = "none";
         detail = "Keybase profile not found.";
+      } else {
+        state = "inconclusive";
+        detail = `Keybase API responded HTTP ${status}.`;
       }
     } else if (provider.type === "api_artstation") {
       if (status === 200) {
         const text = await response.text();
-        if (text.includes('"id"') && !text.includes('"error"')) {
+        let payload: any = null;
+        try { payload = JSON.parse(text); } catch {}
+        if (payload && typeof payload === "object" && !Array.isArray(payload) && (typeof payload.id === "number" || (typeof payload.id === "string" && payload.id.length > 0)) && !payload.error) {
           state = "candidate";
           confidence = "high";
           identityName = username;
@@ -788,8 +812,8 @@ export async function checkProvider(
         state = "not_found";
         detail = "ArtStation artist profile does not exist.";
       } else {
-        state = "not_found";
-        detail = "No ArtStation profile.";
+        state = "inconclusive";
+        detail = `ArtStation API responded HTTP ${status}.`;
       }
     } else if (provider.type === "api_glitch") {
       if (status === 200) {
@@ -809,9 +833,13 @@ export async function checkProvider(
           state = "not_found";
           detail = "Glitch user does not exist.";
         }
-      } else {
+      } else if (status === 404) {
         state = "not_found";
+        confidence = "none";
         detail = "Glitch user does not exist.";
+      } else {
+        state = "inconclusive";
+        detail = `Glitch API responded HTTP ${status}.`;
       }
     } else if (provider.type === "api_reddit") {
       if (status === 200) {
@@ -949,6 +977,7 @@ export async function checkProvider(
       identifier_display: identifierDisplay,
       fields_count: fieldsCount,
       extra_fields: Object.keys(extraFields).length > 0 ? extraFields : undefined,
+      verified: Boolean(provider.type?.startsWith("api_") && state === "candidate"),
     };
   } catch (err: any) {
     const isAbort = err?.name === "AbortError";
@@ -973,14 +1002,16 @@ export async function searchUsername(
   depth: number = 0
 ): Promise<CheckResult[]> {
   const valid = validateUsername(username);
-  const maxDepth = Math.min(Math.max(0, Number.isFinite(depth) ? Math.floor(depth) : 0), 3);
+  const maxDepth = Math.min(Math.max(0, Number.isFinite(depth) ? Math.floor(depth) : 0), 1);
   const seen = new Set<string>([valid.toLowerCase()]);
   const allResults: CheckResult[] = [];
   let current = [{ username: valid, seed: undefined as string | undefined }];
 
   for (let layer = 0; layer <= maxDepth && current.length > 0; layer++) {
-    const layerResults = await mapWithConcurrency(current, 4, async pivot =>
-      mapWithConcurrency(PROVIDERS, 8, provider => checkProvider(provider, pivot.username, layer, pivot.seed))
+    const deepSearchProviders = ["GitHub", "GitLab", "Reddit", "Hacker News", "Keybase", "ArtStation"];
+    const providersForLayer = layer === 0 ? PROVIDERS : PROVIDERS.filter(provider => deepSearchProviders.includes(provider.name));
+    const layerResults = await mapWithConcurrency(current.slice(0, 1), 1, async pivot =>
+      mapWithConcurrency(providersForLayer, 6, provider => checkProvider(provider, pivot.username, layer, pivot.seed))
     );
     const flattened = layerResults.flat();
     allResults.push(...flattened);
@@ -996,9 +1027,9 @@ export async function searchUsername(
         if (seen.has(key)) continue;
         seen.add(key);
         next.push({ username: pivot, seed: result.provider });
-        if (next.length >= 3) break;
+        if (next.length >= 1) break;
       }
-      if (next.length >= 3) break;
+      if (next.length >= 1) break;
     }
     current = next;
   }
