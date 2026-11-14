@@ -794,6 +794,23 @@ main {
   </div>
 </div>
 
+<!-- Password Exposure Modal (k-Anonymity HIBP Audit) -->
+<div id="exposureModal" class="modal-overlay hidden" onclick="if(event.target===this) closeExposureModal()">
+  <div class="modal">
+    <h2>Password Exposure Audit</h2>
+    <p class="desc">Verify password exposure using k-anonymity. Only the first 5 SHA-1 hash characters are sent to the range API; your password is never stored or transmitted.</p>
+    <div class="field">
+      <label for="exposurePassword">Password to Audit</label>
+      <input id="exposurePassword" type="password" placeholder="Enter password to verify exposure...">
+    </div>
+    <div id="exposureResult" style="font-size:12.5px;min-height:20px;margin-bottom:12px;font-family:var(--mono);"></div>
+    <div class="modal-btn-row">
+      <button id="checkExposureBtn" class="primary" style="flex:1" onclick="submitPasswordExposureCheck()">Audit Exposure</button>
+      <button class="outline" style="flex:1" onclick="closeExposureModal()">Close</button>
+    </div>
+  </div>
+</div>
+
 <script>
 let token = localStorage.getItem("st_token");
 let userEmail = localStorage.getItem("st_email");
@@ -812,6 +829,7 @@ function updateAuthUI() {
   if (token && userEmail) {
     container.innerHTML = `
       <span style="font-size:12px;color:var(--text-muted);font-family:var(--mono);">${escapeHtml(userEmail)}</span>
+      <button class="outline" style="padding:5px 10px;font-size:12px;" onclick="openExposureModal()">Audit Password</button>
       <button class="outline" style="padding:5px 10px;font-size:12px;" onclick="signOut()">Sign Out</button>
     `;
     el("historySection").classList.remove("hidden");
@@ -819,6 +837,48 @@ function updateAuthUI() {
   } else {
     container.innerHTML = `<button class="outline" onclick="openAuthModal()">Cloud Sync</button>`;
     el("historySection").classList.add("hidden");
+  }
+}
+
+function openExposureModal() {
+  el("exposurePassword").value = "";
+  el("exposureResult").innerHTML = "";
+  el("exposureModal").classList.remove("hidden");
+}
+function closeExposureModal() {
+  el("exposureModal").classList.add("hidden");
+}
+
+async function submitPasswordExposureCheck() {
+  const pwd = el("exposurePassword").value;
+  const resultDiv = el("exposureResult");
+  const btn = el("checkExposureBtn");
+  if (!pwd) {
+    resultDiv.innerHTML = '<span style="color:#f87171">Please enter a password to audit.</span>';
+    return;
+  }
+  btn.disabled = true;
+  resultDiv.innerHTML = '<span style="color:var(--cyan)">Querying k-anonymity range API...</span>';
+  try {
+    const res = await fetch("/api/v1/security/password-exposure", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { "Authorization": "Bearer " + token } : {})
+      },
+      body: JSON.stringify({ password: pwd })
+    });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.detail || "Exposure check failed");
+    if (d.exposed) {
+      resultDiv.innerHTML = `<span style="color:#f87171;font-weight:600">⚠️ Compromised: Found ${d.exposureCount.toLocaleString()} times in known breaches. Do not reuse!</span>`;
+    } else {
+      resultDiv.innerHTML = `<span style="color:var(--green);font-weight:600">✓ Safe: Not found in public breach records (0 exposures).</span>`;
+    }
+  } catch (err) {
+    resultDiv.innerHTML = `<span style="color:#f87171">Error: ${escapeHtml(err.message)}</span>`;
+  } finally {
+    btn.disabled = false;
   }
 }
 
