@@ -26,6 +26,7 @@ export interface EmailResult {
     category: string;
     url: string;
     status: "verified" | "candidate" | "inconclusive";
+    verified?: boolean;
     identityName?: string;
     identifierDisplay?: string;
     fieldsCount?: number;
@@ -167,7 +168,8 @@ export async function analyzeEmail(email: string): Promise<EmailResult> {
       name: "OPENPGP KEYSERVER",
       category: "Cryptographic Identity",
       url: `https://keyserver.ubuntu.com/pks/lookup?op=vindex&search=${encodeURIComponent(cleaned)}`,
-      status: "candidate",
+      status: "verified",
+      verified: true,
       identityName: pgp.names[0] || username,
       identifierDisplay: `Email: ${cleaned}`,
       fieldsCount: 2 + pgp.altEmails.length,
@@ -186,7 +188,8 @@ export async function analyzeEmail(email: string): Promise<EmailResult> {
       name: "GRAVATAR",
       category: "Avatar & Bio Identity",
       url: `https://gravatar.com/${sha256Hex}`,
-      status: "candidate",
+      status: "verified",
+      verified: true,
       identifierDisplay: `Email: ${cleaned}`,
       fieldsCount: 2,
       extraFields: {
@@ -198,66 +201,7 @@ export async function analyzeEmail(email: string): Promise<EmailResult> {
     });
   }
 
-  // Common identity pivots for all emails
-  platforms.push({
-    name: "GOOGLE ACCOUNT",
-    category: "Identity Ecosystem",
-    url: "https://contacts.google.com",
-    status: "candidate",
-    identifierDisplay: `Email: ${cleaned}`,
-    fieldsCount: 3,
-    extraFields: {
-      "Google Ecosystem": "Active Google Account",
-      "Domain": domain
-    },
-    detail: domain.includes("gmail.com") 
-      ? `Primary Google Account identifier (@${domain}). Active on YouTube, Play Store, Drive.` 
-      : `Check whether enterprise domain ${domain} delegates to Google Workspace.`,
-    icon: "google.com"
-  });
-
-  platforms.push({
-    name: "GITHUB COMMIT SEARCH",
-    category: "Code & Commits",
-    url: `https://github.com/search?q=author-email%3A%22${encodeURIComponent(cleaned)}%22&type=commits`,
-    status: "candidate",
-    identifierDisplay: `Email: ${cleaned}`,
-    fieldsCount: 2,
-    extraFields: {
-      "Git Search": `author-email:"${cleaned}"`
-    },
-    detail: `Search public Git commits authored by ${cleaned} across millions of open-source repositories.`,
-    icon: "github.com"
-  });
-
-  platforms.push({
-    name: "GRAVATAR",
-    category: "Avatar & Bio",
-    url: `https://gravatar.com/${sha256Hex}`,
-    status: "candidate",
-    identifierDisplay: `Hash: ${sha256Hex.slice(0, 16)}...`,
-    fieldsCount: 2,
-    extraFields: {
-      "Avatar URL": gravatarAvatar,
-      "SHA-256": sha256Hex
-    },
-    detail: `Globally recognized avatar (Gravatar) and linked public profile.`,
-    icon: "gravatar.com"
-  });
-
-  platforms.push({
-    name: "HAVEIBEENPWNED",
-    category: "Breach Intelligence",
-    url: `https://haveibeenpwned.com/account/${encodeURIComponent(cleaned)}`,
-    status: "candidate",
-    identifierDisplay: `Email: ${cleaned}`,
-    fieldsCount: 2,
-    extraFields: {
-      "Breach Audit": "HIBP Public Index"
-    },
-    detail: `Audit whether ${cleaned} appeared in known historical database dumps or credential leaks.`,
-    icon: "haveibeenpwned.com"
-  });
+  // Unqueried Google, GitHub commit, HIBP, and duplicate Gravatar links are not evidence.
 
   return {
     email: cleaned,
