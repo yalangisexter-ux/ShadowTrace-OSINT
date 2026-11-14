@@ -910,7 +910,7 @@ export async function checkProvider(
           detail = "Page contains a provider-specific not-found signal.";
         } else {
           const probeHost = new URL(probeUrl).hostname.toLowerCase().replace(/^www\./, "");
-          const baseline = layer === 0 && BASELINE_PROBE_HOSTS.has(probeHost) ? await getSoft404Baseline(probeUrl, targetUrl, username) : null;
+          const baseline = layer === 0 && (BASELINE_PROBE_HOSTS.has(probeHost) || probeHost.endsWith(".substack.com")) ? await getSoft404Baseline(probeUrl, targetUrl, username) : null;
           if (baseline && isSoft404Page(html, baseline)) {
             state = "not_found";
             confidence = "none";
@@ -925,7 +925,7 @@ export async function checkProvider(
               extraFields = {
                 ...(signals.displayName ? { "Display name": signals.displayName } : {}),
                 ...(signals.description ? { "Description": signals.description.slice(0, 300) } : {}),
-                ...(signals.links.length ? { "Links": signals.links.join("\n") } : {})
+                ...(signals.links.length ? { "Links": signals.links.join("; ") } : {})
               };
               detail = signals.titleMentionsUsername
                 ? "Profile-specific page metadata matches the requested username."
@@ -1010,10 +1010,10 @@ export async function searchUsername(
   let current = [{ username: valid, seed: undefined as string | undefined }];
 
   for (let layer = 0; layer <= maxDepth && current.length > 0; layer++) {
-    const deepSearchProviders = ["GitHub", "GitLab", "Reddit", "Keybase"];
+    const deepSearchProviders = ["GitHub", "GitLab", "Reddit"];
     const providersForLayer = layer === 0 ? PROVIDERS : PROVIDERS.filter(provider => deepSearchProviders.includes(provider.name));
     const layerResults = await mapWithConcurrency(current.slice(0, 1), 1, async pivot =>
-      mapWithConcurrency(providersForLayer, 4, provider => checkProvider(provider, pivot.username, layer, pivot.seed))
+      mapWithConcurrency(providersForLayer, 3, provider => checkProvider(provider, pivot.username, layer, pivot.seed))
     );
     const flattened = layerResults.flat();
     allResults.push(...flattened);
@@ -1022,7 +1022,7 @@ export async function searchUsername(
     const next: Array<{ username: string; seed: string }> = [];
     for (const result of flattened) {
       if (result.status !== "candidate" || result.confidence !== "high") continue;
-      const links = (result.extra_fields?.Links || "").split("\n").filter(Boolean);
+      const links = (result.extra_fields?.Links || "").split(/;\\s*/).filter(Boolean);
       const displayName = result.extra_fields?.["Display name"] || result.identity_name || "";
       for (const pivot of extractPivotUsernames(links, displayName, valid)) {
         const key = pivot.toLowerCase();
