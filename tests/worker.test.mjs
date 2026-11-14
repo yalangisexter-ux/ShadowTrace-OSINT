@@ -121,6 +121,8 @@ test("soft-404 baseline detects generic not-found templates but not distinct pro
   const missing = '<html><head><title>Page not found</title></head><body><main>We could not find this page. Please check the address and try again.</main></body></html>';
   const sameMissing = '<html><head><title>Page not found</title></head><body><main>We could not find this page. Please check the address and try again.</main></body></html>';
   const realProfile = '<html><head><title>octocat profile</title></head><body><main>octocat repositories projects followers contributions profile details public account data</main></body></html>';
+  const sharedTitleProfile = '<html><head><title>Page not found</title></head><body><main>octocat repositories projects followers contributions profile details public account data and recent activity</main></body></html>';
   assert.equal(isSoft404Page(sameMissing, missing), true);
   assert.equal(isSoft404Page(realProfile, missing), false);
+  assert.equal(isSoft404Page(sharedTitleProfile, missing), false);
 });
