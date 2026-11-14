@@ -513,11 +513,18 @@ app.post("/api/v1/search/username", async (c) => {
 
     const discoveredNames = new Set<string>();
     const discoveredAvatars = new Set<string>();
+    const INVALID_NAMES = new Set([
+      "bitbucket", "github", "gitlab", "steam community", "medium", "substack", "reddit",
+      "page not found", "not found", "404", "sign in", "log in", "undefined", "null", "deviantart"
+    ]);
 
     for (const r of results) {
       if (r.status === "candidate") {
         if (r.identity_name && r.identity_name !== username) {
-          discoveredNames.add(r.identity_name);
+          const lower = r.identity_name.toLowerCase().trim();
+          if (!INVALID_NAMES.has(lower) && !lower.startsWith("http") && lower.length >= 2) {
+            discoveredNames.add(r.identity_name);
+          }
         }
         if (r.extra_fields?.Avatar) {
           discoveredAvatars.add(r.extra_fields.Avatar);
@@ -525,11 +532,14 @@ app.post("/api/v1/search/username", async (c) => {
       }
     }
 
+    const ghCandidate = results.find(r => r.provider === "GitHub" && r.status === "candidate");
+    if (ghCandidate) {
+      discoveredAvatars.add(`https://github.com/${username}.png`);
+    }
+
     entities = {
       names: discoveredNames.size > 0 ? [username, ...Array.from(discoveredNames)] : [username],
-      profile_pictures: discoveredAvatars.size > 0 
-        ? Array.from(discoveredAvatars) 
-        : [`https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(username)}`],
+      profile_pictures: Array.from(discoveredAvatars),
       banners: [],
       usernames: [username],
       emails: [],

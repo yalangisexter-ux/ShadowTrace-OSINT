@@ -61,14 +61,15 @@ const d1Emulator: D1Database = {
 };
 
 const htmlPath = path.resolve(process.cwd(), "frontend", "index.html");
-const htmlContent = fs.readFileSync(htmlPath, "utf-8");
 
-// Mount static frontend for local dev
+// Mount static frontend for local dev (live-reloaded on each request)
 app.get("/", (c) => {
-  return c.html(htmlContent);
+  const content = fs.readFileSync(htmlPath, "utf-8");
+  return c.html(content);
 });
 app.get("/index.html", (c) => {
-  return c.html(htmlContent);
+  const content = fs.readFileSync(htmlPath, "utf-8");
+  return c.html(content);
 });
 
 const env: Env = {

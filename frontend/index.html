@@ -1177,7 +1177,7 @@ function renderPlatformCards() {
         <div>
           <div class="platform-card-header">
             <div class="platform-logo">
-              <img src="${faviconUrl}" alt="${escapeHtml(item.provider)}" onerror="this.src='data:image/svg+xml;utf8,<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'20\\' height=\\'20\\' viewBox=\\'0 0 24 24\\' fill=\\'%2338bdf8\\'><circle cx=\\'12\\' cy=\\'12\\' r=\\'10\\'/></svg>'">
+              <img src="${item.extra_fields && item.extra_fields.Avatar ? escapeHtml(item.extra_fields.Avatar) : faviconUrl}" alt="${escapeHtml(item.provider)}" onerror="this.src='${faviconUrl}'">
             </div>
             <div class="platform-titles">
               <div class="platform-name">${escapeHtml(item.provider)}</div>

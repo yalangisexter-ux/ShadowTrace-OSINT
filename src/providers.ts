@@ -362,6 +362,7 @@ export interface ProfileSignals {
   title: string;
   description: string;
   displayName: string;
+  avatar?: string;
   links: string[];
   titleMentionsUsername: boolean;
 }
@@ -376,13 +377,36 @@ export function extractProfileSignals(html: string, username: string, baseUrl: s
     for (const tag of metaTags) {
       const key = tag.match(/\b(?:property|name)\s*=\s*["']([^"']+)["']/i)?.[1];
       const value = tag.match(/\bcontent\s*=\s*["']([^"']*)["']/i)?.[1];
-      if (key === property && value) return decodeHtml(value);
+      if (key && key.toLowerCase() === property.toLowerCase() && value) return decodeHtml(value);
     }
     return "";
   };
   const title = decodeHtml(meta("og:title") || html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || "");
   const description = decodeHtml(meta("og:description") || meta("description") || "");
-  const displayName = title.replace(/\s*[|·—-]\s*[^|·—-]+$/, "").trim();
+  
+  // Extract avatar / profile picture
+  const rawImage = meta("og:image") || meta("twitter:image") || meta("image");
+  let avatar: string | undefined;
+  if (rawImage && (rawImage.startsWith("https://") || rawImage.startsWith("http://"))) {
+    const lower = rawImage.toLowerCase();
+    // Exclude generic site logos, default banners, and trackers
+    if (!lower.includes("favicon") && !lower.includes("logo") && !lower.includes("brand") && !lower.includes("default_banner")) {
+      avatar = rawImage;
+    }
+  }
+
+  // Extract clean display name
+  let displayName = title;
+  const author = meta("author") || meta("profile:first_name");
+  if (author && author.length > 1 && !author.toLowerCase().includes("page not found")) {
+    displayName = author;
+  } else {
+    displayName = title
+      .replace(/\s*(?:\||·|—|-|::)\s*(?:Bitbucket|GitHub|GitLab|DEV Community|Medium|Substack|Reddit|Keybase|Steam Community|DeviantArt|Docker Hub|npm|PyPI|Replit|Glitch|CodePen|SoundCloud|Behance|Dribbble|ArtStation|About\.me|Linktree|Patreon|Product Hunt)[^|·—:-]*$/i, "")
+      .replace(/\s*[|·—-]\s*[^|·—-]+$/, "")
+      .trim();
+  }
+
   const links = new Set<string>();
   const anchorPattern = /<a\b[^>]*href=["']([^"'#]+)["'][^>]*>/gi;
   let match: RegExpExecArray | null;
@@ -396,7 +420,7 @@ export function extractProfileSignals(html: string, username: string, baseUrl: s
       }
     } catch {}
   }
-  return { title, description, displayName, links: Array.from(links), titleMentionsUsername: Boolean(title && title.toLowerCase().includes(username.toLowerCase())) };
+  return { title, description, displayName, avatar, links: Array.from(links), titleMentionsUsername: Boolean(title && title.toLowerCase().includes(username.toLowerCase())) };
 }
 
 interface PageFingerprint { title: string; words: Set<string>; }
@@ -620,6 +644,7 @@ export async function checkProvider(
       let isGitlabCandidate = false;
       let glName = "";
       let glId = "";
+      let glAvatar = "";
 
       if (status === 200) {
         try {
@@ -628,6 +653,7 @@ export async function checkProvider(
             isGitlabCandidate = true;
             glId = String(arr[0].id);
             glName = arr[0].name || username;
+            glAvatar = arr[0].avatar_url || "";
           } else {
             state = "not_found";
             confidence = "none";
@@ -665,6 +691,7 @@ export async function checkProvider(
         extraFields = {
           "Name": glName || username,
           "Profile": targetUrl,
+          ...(glAvatar ? { "Avatar": glAvatar } : {}),
           ...(glId ? { "User ID": glId } : {})
         };
         detail = `Active GitLab account (${glName || username}).`;
@@ -680,7 +707,8 @@ export async function checkProvider(
         extraFields = {
           "Player": d.name || username,
           "Player ID": String(d.player_id || ""),
-          "Status": d.status || "active"
+          "Status": d.status || "active",
+          ...(d.avatar ? { "Avatar": d.avatar } : {})
         };
         detail = `Active Chess.com player (ID: ${d.player_id ?? d.username}, Status: ${d.status || "active"}).`;
       } else if (status === 404) {
@@ -772,7 +800,8 @@ export async function checkProvider(
           fieldsCount = 2;
           extraFields = {
             "Keybase UID": d.them[0].id,
-            "Verification": "Cryptographically Verified PGP"
+            "Verification": "Cryptographically Verified PGP",
+            ...(d.them[0].pictures?.primary?.url ? { "Avatar": d.them[0].pictures.primary.url } : {})
           };
           detail = `Verified Keybase cryptographic identity.`;
         } else {
@@ -851,9 +880,11 @@ export async function checkProvider(
           identityName = d.data.name;
           identifierDisplay = `u/${d.data.name}`;
           fieldsCount = 2;
+          const redditIcon = d.data.icon_img ? d.data.icon_img.split("?")[0] : "";
           extraFields = {
             "Total Karma": String(d.data.total_karma ?? 0),
-            "Account": "Verified Reddit User"
+            "Account": "Verified Reddit User",
+            ...(redditIcon && !redditIcon.includes("default") ? { "Avatar": redditIcon } : {})
           };
           detail = `Active Reddit account (Karma: ${d.data.total_karma ?? 0}).`;
         } else {
@@ -924,6 +955,7 @@ export async function checkProvider(
               identityName = signals.displayName || username;
               extraFields = {
                 ...(signals.displayName ? { "Display name": signals.displayName } : {}),
+                ...(signals.avatar ? { "Avatar": signals.avatar } : {}),
                 ...(signals.description ? { "Description": signals.description.slice(0, 300) } : {}),
                 ...(signals.links.length ? { "Links": signals.links.join("; ") } : {})
               };
