@@ -180,7 +180,7 @@ export const PROVIDERS: Provider[] = [
   {
     name: "Telegram",
     urlTemplate: "https://t.me/{username}",
-    notFoundMarkers: ["if you have telegram, you can view and join", "tgme_page_extra"],
+    notFoundMarkers: [],
     existsMarkers: ["tgme_page_title", "tgme_page_description"],
     category: "social",
     domain: "telegram.org",
@@ -188,7 +188,7 @@ export const PROVIDERS: Provider[] = [
   {
     name: "Mastodon",
     urlTemplate: "https://mastodon.social/@{username}",
-    notFoundMarkers: ["page not found", "404"],
+    notFoundMarkers: ["page not found", "account not found"],
     existsMarkers: ["account__header", "toots"],
     category: "social",
     domain: "mastodon.social",
@@ -218,7 +218,7 @@ export const PROVIDERS: Provider[] = [
   {
     name: "Steam Community",
     urlTemplate: "https://steamcommunity.com/id/{username}",
-    notFoundMarkers: ["the specified profile could not be found", "error 502"],
+    notFoundMarkers: ["the specified profile could not be found"],
     existsMarkers: ["profile_header", "actual_persona_name"],
     category: "gaming",
     domain: "steampowered.com",
@@ -356,6 +356,133 @@ export function providerCount(): number {
   return PROVIDERS.length;
 }
 
+
+export interface ProfileSignals {
+  title: string;
+  description: string;
+  displayName: string;
+  links: string[];
+  titleMentionsUsername: boolean;
+}
+
+function decodeHtml(value: string): string {
+  return value.replace(/&amp;/gi, "&").replace(/&#39;|&apos;/gi, "'").replace(/&quot;/gi, '"').replace(/&lt;/gi, "<").replace(/&gt;/gi, ">").trim();
+}
+
+export function extractProfileSignals(html: string, username: string, baseUrl: string): ProfileSignals {
+  const meta = (property: string) => {
+    const patterns = [
+      new RegExp("<meta[^>]+(?:property|name)=[\\"']" + property + "[\\"'][^>]+content=[\\"']([^\\"']*)[\\"'][^>]*>", "i"),
+      new RegExp("<meta[^>]+content=[\\"']([^\\"']*)[\\"'][^>]+(?:property|name)=[\\"']" + property + "[\\"'][^>]*>", "i")
+    ];
+    for (const pattern of patterns) {
+      const match = html.match(pattern);
+      if (match?.[1]) return decodeHtml(match[1]);
+    }
+    return "";
+  };
+  const title = decodeHtml(meta("og:title") || html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || "");
+  const description = decodeHtml(meta("og:description") || meta("description") || "");
+  const displayName = title.replace(/\s*[|·—-]\s*[^|·—-]+$/, "").trim();
+  const links = new Set<string>();
+  const anchorPattern = /<a\b[^>]*href=["']([^"'#]+)["'][^>]*>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = anchorPattern.exec(html)) && links.size < 40) {
+    try {
+      const url = new URL(decodeHtml(match[1]), baseUrl);
+      if (url.protocol === "https:" && !url.username && !url.password) {
+        url.search = "";
+        url.hash = "";
+        links.add(url.toString());
+      }
+    } catch {}
+  }
+  return { title, description, displayName, links: Array.from(links), titleMentionsUsername: Boolean(title && title.toLowerCase().includes(username.toLowerCase())) };
+}
+
+interface PageFingerprint { title: string; words: Set<string>; }
+
+function fingerprintHtml(html: string): PageFingerprint {
+  const title = decodeHtml(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || "").toLowerCase();
+  const text = html.replace(/<script\b[\s\S]*?<\/script>/gi, " ").replace(/<style\b[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ").replace(/&[a-z#0-9]+;/gi, " ").toLowerCase();
+  const words = new Set((text.match(/[a-z0-9]{3,}/g) || []).filter(word => !["the", "and", "for", "with", "this", "that", "your", "from", "have", "page"].includes(word)));
+  return { title, words };
+}
+
+export function isSoft404Page(candidateHtml: string, baselineHtml: string): boolean {
+  const candidate = fingerprintHtml(candidateHtml);
+  const baseline = fingerprintHtml(baselineHtml);
+  if (!baseline.title && baseline.words.size === 0) return false;
+  if (candidate.title && baseline.title && candidate.title === baseline.title) return true;
+  if (candidate.words.size < 8 || baseline.words.size < 8) return false;
+  let overlap = 0;
+  for (const word of candidate.words) if (baseline.words.has(word)) overlap++;
+  return overlap / Math.max(candidate.words.size, baseline.words.size) >= 0.88;
+}
+
+const soft404Baselines = new Map<string, Promise<string | null>>();
+
+async function getSoft404Baseline(probeUrl: string): Promise<string | null> {
+  const host = new URL(probeUrl).hostname;
+  let pending = soft404Baselines.get(host);
+  if (!pending) {
+    pending = (async () => {
+      try {
+        const baselineUrl = new URL("/.well-known/shadowtrace-missing-" + crypto.randomUUID(), probeUrl).toString();
+        const response = await fetch(baselineUrl, { headers: { "User-Agent": USER_AGENT, "Accept": "text/html,*/*" }, redirect: "follow", signal: AbortSignal.timeout(4500) });
+        if (response.status !== 200 || !response.url) return null;
+        const finalHost = new URL(response.url).hostname.replace(/^www\./, "");
+        if (finalHost !== host.replace(/^www\./, "")) return null;
+        return (await response.text()).slice(0, 120000);
+      } catch { return null; }
+    })();
+    soft404Baselines.set(host, pending);
+  }
+  return pending;
+}
+
+function isAllowedFinalUrl(probeUrl: string, finalUrl: string): boolean {
+  try {
+    const expected = new URL(probeUrl).hostname.toLowerCase().replace(/^www\./, "");
+    const actual = new URL(finalUrl).hostname.toLowerCase().replace(/^www\./, "");
+    return actual === expected || actual.endsWith("." + expected);
+  } catch { return false; }
+}
+
+function extractPivotUsernames(links: string[], displayName: string, rootUsername: string): string[] {
+  const knownHosts = new Set(PROVIDERS.map(provider => {
+    try { return new URL(provider.urlTemplate.replace("{username}", "shadowtrace")).hostname.toLowerCase().replace(/^www\./, ""); }
+    catch { return ""; }
+  }));
+  const found = new Set<string>();
+  for (const link of links) {
+    try {
+      const url = new URL(link);
+      if (!knownHosts.has(url.hostname.toLowerCase().replace(/^www\./, ""))) continue;
+      const segments = url.pathname.split("/").filter(Boolean);
+      const raw = segments[segments.length - 1]?.replace(/^@/, "").replace(/^~/, "");
+      if (raw && USERNAME_RE.test(raw) && raw.toLowerCase() !== rootUsername.toLowerCase()) found.add(raw);
+    } catch {}
+  }
+  for (const match of displayName.matchAll(/@([A-Za-z0-9_.-]{2,30})/g)) {
+    if (match[1].toLowerCase() !== rootUsername.toLowerCase()) found.add(match[1]);
+  }
+  return Array.from(found).slice(0, 3);
+}
+
+async function mapWithConcurrency<T, R>(items: T[], concurrency: number, mapper: (item: T) => Promise<R>): Promise<R[]> {
+  const output = new Array<R>(items.length);
+  let cursor = 0;
+  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (true) {
+      const index = cursor++;
+      if (index >= items.length) return;
+      output[index] = await mapper(items[index]);
+    }
+  }));
+  return output;
+}
+
 export async function checkProvider(
   provider: Provider,
   username: string,
@@ -384,13 +511,16 @@ export async function checkProvider(
         "Sec-Fetch-User": "?1",
         "Upgrade-Insecure-Requests": "1",
       },
-      redirect: "manual",
+      redirect: "follow",
       signal: controller.signal,
     });
     clearTimeout(timeoutId);
 
     const status = response.status;
     const finalUrl = response.url || probeUrl;
+    if (!isAllowedFinalUrl(probeUrl, finalUrl)) {
+      return { provider: provider.name, category: provider.category, profile_url: targetUrl, domain: provider.domain, status: "inconclusive", http_status: status, confidence: "none", detail: "Provider redirected outside its own host; response rejected.", checked_at: checkedAt, layer, seed };
+    }
 
     let state: "candidate" | "not_found" | "inconclusive" = "inconclusive";
     let confidence: "none" | "low" | "medium" | "high" = "none";
@@ -723,28 +853,40 @@ export async function checkProvider(
         confidence = "none";
         detail = "Redirected to login or homepage; profile does not exist.";
       } else if (status === 200) {
-        const text = await response.text();
-        const body = text.slice(0, 180000).toLowerCase();
-
-        const matchedNotFound = provider.notFoundMarkers.some((m) =>
-          body.includes(m.toLowerCase())
-        );
-
+        const html = (await response.text()).slice(0, 180000);
+        const body = html.toLowerCase();
+        const matchedNotFound = provider.notFoundMarkers.some(marker => body.includes(marker.toLowerCase()));
         if (matchedNotFound) {
           state = "not_found";
           confidence = "none";
-          detail = "Page returned 200 but contains provider not-found markers.";
-        } else if (
-          provider.existsMarkers.length > 0 &&
-          provider.existsMarkers.some((m) => body.includes(m.toLowerCase()))
-        ) {
-          state = "candidate";
-          confidence = layer === 0 ? "high" : "medium";
-          detail = "Verified public profile signals found on page.";
+          detail = "Page contains a provider-specific not-found signal.";
         } else {
-          state = "candidate";
-          confidence = layer === 0 ? "medium" : "low";
-          detail = "Public profile page responded 200 OK. Manually verify identity ownership.";
+          const baseline = await getSoft404Baseline(probeUrl);
+          if (baseline && isSoft404Page(html, baseline)) {
+            state = "not_found";
+            confidence = "none";
+            detail = "Page matches this provider's missing-profile baseline (soft 404).";
+          } else {
+            const signals = extractProfileSignals(html, username, finalUrl);
+            const markerMatch = provider.existsMarkers.some(marker => body.includes(marker.toLowerCase()));
+            if (signals.titleMentionsUsername || markerMatch) {
+              state = "candidate";
+              confidence = signals.titleMentionsUsername && markerMatch ? "high" : "medium";
+              identityName = signals.displayName || username;
+              extraFields = {
+                ...(signals.displayName ? { "Display name": signals.displayName } : {}),
+                ...(signals.description ? { "Description": signals.description.slice(0, 300) } : {}),
+                ...(signals.links.length ? { "Links": signals.links.join("\n") } : {})
+              };
+              detail = signals.titleMentionsUsername
+                ? "Profile-specific page metadata matches the requested username."
+                : "Provider profile markers found; identity ownership still requires manual review.";
+            } else {
+              state = "inconclusive";
+              confidence = "none";
+              detail = "HTTP 200 response lacked profile-specific evidence; not counted as a match.";
+            }
+          }
         }
       } else if (status === 404) {
         state = "not_found";
@@ -812,24 +954,34 @@ export async function searchUsername(
   depth: number = 0
 ): Promise<CheckResult[]> {
   const valid = validateUsername(username);
-  const maxDepth = Math.min(Math.max(0, depth), 2);
+  const maxDepth = Math.min(Math.max(0, Number.isFinite(depth) ? Math.floor(depth) : 0), 3);
+  const seen = new Set<string>([valid.toLowerCase()]);
+  const allResults: CheckResult[] = [];
+  let current = [{ username: valid, seed: undefined as string | undefined }];
 
-  // Layer 0
-  const layer0 = await Promise.all(
-    PROVIDERS.map((p) => checkProvider(p, valid, 0))
-  );
+  for (let layer = 0; layer <= maxDepth && current.length > 0; layer++) {
+    const layerResults = await mapWithConcurrency(current, 4, async pivot =>
+      mapWithConcurrency(PROVIDERS, 8, provider => checkProvider(provider, pivot.username, layer, pivot.seed))
+    );
+    const flattened = layerResults.flat();
+    allResults.push(...flattened);
+    if (layer === maxDepth) break;
 
-  if (maxDepth === 0) return layer0;
-
-  const allResults = [...layer0];
-
-  if (maxDepth >= 1) {
-    for (const r of layer0) {
-      if (r.status === "candidate") {
-        r.detail = (r.detail || "") + " (layer 0)";
+    const next: Array<{ username: string; seed: string }> = [];
+    for (const result of flattened) {
+      if (result.status !== "candidate" || result.confidence !== "high") continue;
+      const links = (result.extra_fields?.Links || "").split("\n").filter(Boolean);
+      const displayName = result.extra_fields?.["Display name"] || result.identity_name || "";
+      for (const pivot of extractPivotUsernames(links, displayName, valid)) {
+        const key = pivot.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        next.push({ username: pivot, seed: result.provider });
+        if (next.length >= 3) break;
       }
+      if (next.length >= 3) break;
     }
+    current = next;
   }
-
   return allResults;
 }
