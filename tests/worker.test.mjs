@@ -56,3 +56,37 @@ test("JWT access token round-trip", async () => {
   const wrongSecret = await decodeAccessToken(token, "different-secret-key-wrong");
   assert.equal(wrongSecret, null);
 });
+
+
+import { detectSearchType, validateSearchInput } from "../src/search.ts";
+import { checkPasswordExposure } from "../src/breach.ts";
+
+test("search input type detection and validation", () => {
+  assert.equal(detectSearchType("analyst@example.com"), "email");
+  assert.equal(detectSearchType("+14155552671"), "phone");
+  assert.equal(detectSearchType("example.org"), "domain");
+  assert.deepEqual(validateSearchInput("octocat", "username"), { type: "username", value: "octocat" });
+  assert.throws(() => validateSearchInput("not-an-email", "email"), /valid email/i);
+  assert.throws(() => validateSearchInput("https://example.org", "domain"), /valid public domain/i);
+  assert.throws(() => validateSearchInput("x".repeat(255)), /1–254/);
+});
+
+test("password exposure lookup sends only the five-character hash prefix", async () => {
+  let requested = "";
+  const fetcher = async (url, init) => {
+    requested = String(url);
+    assert.equal(init.headers["Add-Padding"], "true");
+    return new Response("", { status: 200 });
+  };
+  const result = await checkPasswordExposure("a strong test password", fetcher);
+  assert.match(requested, /range\/[A-F0-9]{5}$/);
+  assert.equal(result.exposed, false);
+  assert.equal(result.exposureCount, 0);
+});
+
+test("password exposure lookup rejects provider failures", async () => {
+  await assert.rejects(
+    () => checkPasswordExposure("a strong test password", async () => new Response("", { status: 503 })),
+    /HTTP 503/
+  );
+});
