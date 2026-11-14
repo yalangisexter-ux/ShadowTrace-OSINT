@@ -86,6 +86,16 @@ test("password exposure lookup sends only the five-character hash prefix", async
   assert.match(requested, /range\/[A-F0-9]{5}$/);
   assert.equal(result.exposed, false);
   assert.equal(result.exposureCount, 0);
+
+  // Test multiline matching when password hash is exposed in range response
+  const digest = await crypto.subtle.digest("SHA-1", new TextEncoder().encode("exposed-pwd-test"));
+  const hex = Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, "0")).join("").toUpperCase();
+  const suffix = hex.slice(5);
+  const multilineBody = `0018A45C4D63FE8C644FE03513FDCEF729E:1\r\n${suffix}:42\r\n00D4F6E8FA6EEC340B2D3F46E9D33B404D5:2`;
+  const hitFetcher = async () => new Response(multilineBody, { status: 200 });
+  const hitResult = await checkPasswordExposure("exposed-pwd-test", hitFetcher);
+  assert.equal(hitResult.exposed, true);
+  assert.equal(hitResult.exposureCount, 42);
 });
 
 test("password exposure lookup rejects provider failures", async () => {

@@ -27,7 +27,7 @@ export async function checkPasswordExposure(
   if (!response.ok) throw new Error(`Breach provider returned HTTP ${response.status}`);
   const body = await response.text();
   if (body.length > 200_000) throw new Error("Breach provider response exceeded the allowed size");
-  const line = body.split(/\\r?\\n/).find(item => item.split(":")[0]?.trim().toUpperCase() === hex.slice(5));
+  const line = body.split(/\r?\n/).find(item => item.split(":")[0]?.trim().toUpperCase() === hex.slice(5));
   const exposureCount = line ? Number.parseInt(line.split(":")[1] || "0", 10) : 0;
   return {
     checked: true,

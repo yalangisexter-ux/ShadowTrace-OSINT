@@ -847,7 +847,27 @@ export async function checkProvider(
         finalUrl.includes("/users/sign_in") ||
         (finalUrl.replace(/\/$/, "") === `https://${provider.domain}`);
 
-      if (redirectedToAuthOrHome && status === 200) {
+      if (status && status >= 300 && status < 400) {
+        const loc = (response.headers.get("location") || "").toLowerCase();
+        if (
+          loc.includes("/login") ||
+          loc.includes("/sign_in") ||
+          loc.includes("/users/sign_in") ||
+          loc === "/" ||
+          loc === `https://${provider.domain}` ||
+          loc === `https://${provider.domain}/` ||
+          loc === `http://${provider.domain}` ||
+          loc === `http://${provider.domain}/`
+        ) {
+          state = "not_found";
+          confidence = "none";
+          detail = "Provider redirected to login or homepage; profile does not exist.";
+        } else {
+          state = "candidate";
+          confidence = layer === 0 ? "high" : "medium";
+          detail = `Provider profile active with canonical redirect.`;
+        }
+      } else if (redirectedToAuthOrHome && status === 200) {
         state = "not_found";
         confidence = "none";
         detail = "Redirected to login or homepage; profile does not exist.";

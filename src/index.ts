@@ -84,7 +84,8 @@ app.use(
 );
 
 // Durable D1-backed rate limiting shared across Worker instances.
-async function checkThrottle(db: D1Database, key: string, limit: number, windowSeconds: number) {
+async function checkThrottle(db: D1Database | undefined, key: string, limit: number, windowSeconds: number) {
+  if (!db) return { allowed: true, limit, remaining: limit, retryAfterSeconds: 0 };
   return consumeRateLimit(db, key, limit, windowSeconds);
 }
 // Global error handler
@@ -275,8 +276,12 @@ app.post("/api/v1/auth/login", async (c) => {
   const passwordCheck = await verifyPassword(password, user.password_hash);
   if (!passwordCheck.ok) return c.json({ detail: "Invalid email or password" }, 401);
   if (passwordCheck.needsRehash) {
-    const upgradedHash = await hashPassword(password);
-    await updatePasswordHash(c.env.DB, user.id, upgradedHash);
+    try {
+      const upgradedHash = await hashPassword(password);
+      await updatePasswordHash(c.env.DB, user.id, upgradedHash);
+    } catch (rehashErr) {
+      console.warn("Failed to upgrade password hash iterations:", rehashErr);
+    }
   }
 
   const secret = getSecretKey(c.env);
