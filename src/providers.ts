@@ -458,7 +458,7 @@ async function getSoft404Baseline(probeUrl: string, targetUrl: string, username:
   return pending;
 }
 
-function isAllowedFinalUrl(probeUrl: string, finalUrl: string): boolean {
+export function isAllowedFinalUrl(probeUrl: string, finalUrl: string): boolean {
   try {
     const expected = new URL(probeUrl).hostname.toLowerCase().replace(/^www\./, "");
     const actual = new URL(finalUrl).hostname.toLowerCase().replace(/^www\./, "");
@@ -1008,10 +1008,10 @@ export async function searchUsername(
   let current = [{ username: valid, seed: undefined as string | undefined }];
 
   for (let layer = 0; layer <= maxDepth && current.length > 0; layer++) {
-    const deepSearchProviders = ["GitHub", "GitLab", "Reddit", "Hacker News", "Keybase", "ArtStation"];
+    const deepSearchProviders = ["GitHub", "GitLab", "Reddit", "Keybase"];
     const providersForLayer = layer === 0 ? PROVIDERS : PROVIDERS.filter(provider => deepSearchProviders.includes(provider.name));
     const layerResults = await mapWithConcurrency(current.slice(0, 1), 1, async pivot =>
-      mapWithConcurrency(providersForLayer, 6, provider => checkProvider(provider, pivot.username, layer, pivot.seed))
+      mapWithConcurrency(providersForLayer, 4, provider => checkProvider(provider, pivot.username, layer, pivot.seed))
     );
     const flattened = layerResults.flat();
     allResults.push(...flattened);
