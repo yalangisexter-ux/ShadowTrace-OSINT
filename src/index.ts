@@ -11,6 +11,7 @@ import { analyzePhoneNumber } from "./phone";
 import { analyzeEmail } from "./email";
 import { analyzeDomain } from "./domain";
 import { validateSearchInput } from "./search";
+import { consumeRateLimit } from "./ratelimit";
 import {
   hashPassword,
   verifyPassword,
@@ -80,23 +81,10 @@ app.use(
   })
 );
 
-// In-memory rate limiting bucket
-const rateBuckets = new Map<string, { count: number; resetAt: number }>();
-
-function throttle(key: string, limit: number, windowSeconds: number): void {
-  const now = Date.now();
-  const bucket = rateBuckets.get(key);
-  if (!bucket || now > bucket.resetAt) {
-    rateBuckets.set(key, { count: 1, resetAt: now + windowSeconds * 1000 });
-    return;
-  }
-  if (bucket.count >= limit) {
-    const retryAfter = Math.ceil((bucket.resetAt - now) / 1000);
-    throw new Error(`Rate limit exceeded. Try again in ${retryAfter}s`);
-  }
-  bucket.count++;
+// Durable D1-backed rate limiting shared across Worker instances.
+async function checkThrottle(db: D1Database, key: string, limit: number, windowSeconds: number) {
+  return consumeRateLimit(db, key, limit, windowSeconds);
 }
-
 // Global error handler
 app.onError((err, c) => {
   console.error("Unhandled Worker Exception:", err);
@@ -248,11 +236,8 @@ app.post("/api/v1/auth/register", async (c) => {
     );
   }
 
-  try {
-    throttle(`register:${email}`, 3, 3600);
-  } catch (err: any) {
-    return c.json({ detail: err.message }, 429);
-  }
+  const registerLimit = await checkThrottle(c.env.DB, "register:" + email, 3, 3600);
+  if (!registerLimit.allowed) return c.json({ detail: "Too many registration attempts. Try again later.", retry_after: registerLimit.retryAfterSeconds }, 429);
 
   const existing = await getUserByEmail(c.env.DB, email);
   if (existing) {
@@ -287,11 +272,8 @@ app.post("/api/v1/auth/login", async (c) => {
   const email = (body.email || "").trim().toLowerCase();
   const password = body.password || "";
 
-  try {
-    throttle(`login:${email}`, 8, 300);
-  } catch (err: any) {
-    return c.json({ detail: err.message }, 429);
-  }
+  const loginLimit = await checkThrottle(c.env.DB, "login:" + email, 8, 300);
+  if (!loginLimit.allowed) return c.json({ detail: "Too many sign-in attempts. Try again later.", retry_after: loginLimit.retryAfterSeconds }, 429);
 
   const user = await getUserByEmail(c.env.DB, email);
   if (!user || !(await verifyPassword(password, user.password_hash))) {
@@ -359,15 +341,10 @@ app.post("/api/v1/search/username", async (c) => {
   }
 
   const clientIp = c.req.header("cf-connecting-ip") || "anon";
-  try {
-    if (user) {
-      throttle(`search:user:${user.id}`, 15, 60);
-    } else {
-      throttle(`search:guest:${clientIp}`, 20, 60);
-    }
-  } catch (err: any) {
-    return c.json({ detail: err.message }, 429);
-  }
+  const searchLimit = user
+    ? await checkThrottle(c.env.DB, "search:user:" + user.id, 15, 60)
+    : await checkThrottle(c.env.DB, "search:guest:" + clientIp, 20, 60);
+  if (!searchLimit.allowed) return c.json({ detail: "Search rate limit exceeded. Try again shortly.", retry_after: searchLimit.retryAfterSeconds }, 429);
 
   let results: CheckResult[] = [];
   let queryLabel = rawQuery;
