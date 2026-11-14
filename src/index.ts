@@ -12,6 +12,7 @@ import { analyzeEmail } from "./email";
 import { analyzeDomain } from "./domain";
 import { validateSearchInput } from "./search";
 import { consumeRateLimit } from "./ratelimit";
+import { checkPasswordExposure } from "./breach";
 import {
   hashPassword,
   verifyPassword,
@@ -304,6 +305,25 @@ app.get("/api/v1/auth/me", async (c) => {
     email: user.email,
     created_at: user.created_at,
   });
+});
+
+// Explicit, authenticated password exposure check. The raw password is never persisted.
+app.post("/api/v1/security/password-exposure", async (c) => {
+  let user: UserRow;
+  try { user = await requireAuth(c); } catch (err: any) { return c.json({ detail: err.message }, 401); }
+  const limit = await checkThrottle(c.env.DB, "password-check:user:" + user.id, 5, 300);
+  if (!limit.allowed) return c.json({ detail: "Password exposure check limit exceeded.", retry_after: limit.retryAfterSeconds }, 429);
+  let body: any;
+  try { body = await c.req.json(); } catch { return c.json({ detail: "Invalid JSON body" }, 400); }
+  if (typeof body.password !== "string" || body.password.length < 1 || body.password.length > 128) {
+    return c.json({ detail: "Password must contain 1–128 characters" }, 422);
+  }
+  try {
+    const result = await checkPasswordExposure(body.password);
+    return c.json(result, 200, { "Cache-Control": "no-store" });
+  } catch (err: any) {
+    return c.json({ detail: err.message || "Password exposure check unavailable" }, 502);
+  }
 });
 
 // Search: Multi-Modal OSINT Investigation (Username, Phone, Email, Domain)
