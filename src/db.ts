@@ -103,6 +103,15 @@ export async function createUser(
   return { id, email, password_hash: passwordHash, created_at: createdAt };
 }
 
+/** Replace a password hash after a successful login-time rehash. */
+export async function updatePasswordHash(db: D1Database, userId: number, passwordHash: string): Promise<void> {
+  const result = await db
+    .prepare("UPDATE users SET password_hash = ? WHERE id = ?")
+    .bind(passwordHash, userId)
+    .run();
+  if ((result.meta.changes ?? 0) !== 1) throw new Error("Unable to update password hash");
+}
+
 export async function createSearchRun(
   db: D1Database,
   userId: number,
