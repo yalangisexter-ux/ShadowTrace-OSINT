@@ -166,14 +166,15 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // Calculate Digital Threat & Attack Surface Score
 function calculateThreatMatrix(results: CheckResult[], queryType: string) {
-  const verified = results.filter((r) => r.status === "candidate" && r.confidence === "high");
+  const verified = results.filter((r) => r.status === "candidate" && r.verified === true);
   const verifiedCount = verified.length;
+  const breachCount = results.filter(r => r.verified === true && r.status === "candidate" && /breach|pwned/i.test(r.provider)).length;
   let baseScore = 0;
   if (queryType === "domain") {
     const hasSpfIssue = results.some((r) => r.detail.includes("MISSING"));
     baseScore = hasSpfIssue ? 65 : 20;
   } else {
-    baseScore = Math.min(80, verifiedCount * 10);
+    baseScore = Math.min(80, verifiedCount * 10 + breachCount * 20);
   }
   let threatLevel: "LOW" | "MODERATE" | "ELEVATED" | "HIGH" | "CRITICAL" = "LOW";
   if (baseScore >= 75) threatLevel = "CRITICAL";
@@ -395,6 +396,7 @@ app.post("/api/v1/search/username", async (c) => {
         profile_url: p.url,
         domain: p.icon,
         status: p.status === "verified" ? "candidate" : p.status,
+        verified: p.status === "verified",
         http_status: 200,
         confidence: p.status === "verified" ? "high" : p.status === "candidate" ? "low" : "none",
         identity_name: p.identityName,
@@ -439,9 +441,10 @@ app.post("/api/v1/search/username", async (c) => {
         category: p.category.toLowerCase().includes("code") ? "code" : (p.category.toLowerCase().includes("messag") || p.category.toLowerCase().includes("social") ? "social" : "identity"),
         profile_url: p.url,
         domain: p.icon,
-        status: p.status === "verified" ? "candidate" : p.status,
+        status: p.status === "verified" || p.status === "candidate" ? "candidate" : p.status,
+        verified: p.verified === true,
         http_status: 200,
-        confidence: "high",
+        confidence: p.verified === true ? "high" : "low",
         identity_name: p.identityName,
         identifier_display: p.identifierDisplay || `Email: ${emailData.email}`,
         fields_count: p.fieldsCount || 1,
@@ -489,6 +492,7 @@ app.post("/api/v1/search/username", async (c) => {
       profile_url: e.profile_url,
       domain: e.domain,
       status: e.status,
+      verified: e.status === "candidate" && e.confidence === "high",
       http_status: e.http_status,
       confidence: e.confidence,
       detail: e.detail,
