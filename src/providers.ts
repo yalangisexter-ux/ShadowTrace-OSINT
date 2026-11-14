@@ -31,6 +31,7 @@ export interface CheckResult {
   identifier_display?: string;
   fields_count?: number;
   extra_fields?: Record<string, string>;
+  verified?: boolean;
 }
 
 export const PROVIDERS: Provider[] = [
@@ -316,7 +317,7 @@ export const PROVIDERS: Provider[] = [
   {
     name: "Patreon",
     urlTemplate: "https://www.patreon.com/{username}",
-    notFoundMarkers: ["page not found", "404"],
+    notFoundMarkers: ["page not found", "creator not found"],
     existsMarkers: ["patrons", "membership"],
     category: "identity",
     domain: "patreon.com",
@@ -908,7 +909,8 @@ export async function checkProvider(
           confidence = "none";
           detail = "Page contains a provider-specific not-found signal.";
         } else {
-          const baseline = await getSoft404Baseline(probeUrl);
+          const probeHost = new URL(probeUrl).hostname.toLowerCase().replace(/^www\./, "");
+          const baseline = layer === 0 && BASELINE_PROBE_HOSTS.has(probeHost) ? await getSoft404Baseline(probeUrl, targetUrl, username) : null;
           if (baseline && isSoft404Page(html, baseline)) {
             state = "not_found";
             confidence = "none";
