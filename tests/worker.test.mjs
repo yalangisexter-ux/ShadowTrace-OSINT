@@ -6,6 +6,7 @@ import {
   providerCount,
   extractProfileSignals,
   isSoft404Page,
+  isAllowedFinalUrl,
 } from "../src/providers.ts";
 import {
   hashPassword,
@@ -135,4 +136,13 @@ test("soft-404 baseline detects generic not-found templates but not distinct pro
   assert.equal(isSoft404Page(sameMissing, missing), true);
   assert.equal(isSoft404Page(realProfile, missing), false);
   assert.equal(isSoft404Page(sharedTitleProfile, missing), false);
+});
+
+
+test("provider redirect allowlist rejects cross-brand homepage redirects", () => {
+  assert.equal(isAllowedFinalUrl("https://t.me/someuser", "https://t.me/"), true);
+  assert.equal(isAllowedFinalUrl("https://steamcommunity.com/id/someuser", "https://steamcommunity.com/"), true);
+  assert.equal(isAllowedFinalUrl("https://www.npmjs.com/~someuser", "https://www.npmjs.com/"), true);
+  assert.equal(isAllowedFinalUrl("https://t.me/someuser", "https://telegram.org/"), false);
+  assert.equal(isAllowedFinalUrl("https://steamcommunity.com/id/someuser", "https://steampowered.com/"), false);
 });
