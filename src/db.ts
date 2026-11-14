@@ -62,6 +62,8 @@ export async function ensureSchema(db: D1Database): Promise<void> {
       checked_at TEXT NOT NULL
     );`,
     `CREATE INDEX IF NOT EXISTS idx_evidence_run_id ON evidence(run_id);`,
+    `CREATE TABLE IF NOT EXISTS rate_limits (bucket_key TEXT PRIMARY KEY, hit_count INTEGER NOT NULL, window_started_at INTEGER NOT NULL, expires_at INTEGER NOT NULL);`,
+    `CREATE INDEX IF NOT EXISTS idx_rate_limits_expires_at ON rate_limits(expires_at);`,
   ];
   for (const q of queries) {
     try {
