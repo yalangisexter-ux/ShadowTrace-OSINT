@@ -384,7 +384,7 @@ export async function checkProvider(
         "Sec-Fetch-User": "?1",
         "Upgrade-Insecure-Requests": "1",
       },
-      redirect: "follow",
+      redirect: "manual",
       signal: controller.signal,
     });
     clearTimeout(timeoutId);
