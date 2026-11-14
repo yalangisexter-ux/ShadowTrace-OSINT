@@ -104,13 +104,14 @@ export async function createUser(
 export async function createSearchRun(
   db: D1Database,
   userId: number,
+  queryType: string,
   queryValue: string,
   evidence: CheckResult[]
 ): Promise<{ run: SearchRunRow; evidence: CheckResult[] }> {
   const createdAt = new Date().toISOString();
   const runRes = await db
-    .prepare("INSERT INTO search_runs (user_id, query_type, query_value, created_at) VALUES (?, 'username', ?, ?)")
-    .bind(userId, queryValue, createdAt)
+    .prepare("INSERT INTO search_runs (user_id, query_type, query_value, created_at) VALUES (?, ?, ?, ?)")
+    .bind(userId, queryType, queryValue, createdAt)
     .run();
 
   const runId = runRes.meta.last_row_id as number;
@@ -140,7 +141,7 @@ export async function createSearchRun(
   const run: SearchRunRow = {
     id: runId,
     user_id: userId,
-    query_type: "username",
+    query_type: queryType,
     query_value: queryValue,
     created_at: createdAt,
   };
