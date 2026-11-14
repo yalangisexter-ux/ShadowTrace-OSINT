@@ -39,7 +39,7 @@ export interface Env {
   ACCESS_TOKEN_MINUTES?: string;
 }
 
-const app = new Hono<{ Bindings: Env }>();
+export const app = new Hono<{ Bindings: Env }>();
 
 // Security headers
 app.use(
@@ -385,7 +385,7 @@ app.post("/api/v1/search/username", async (c) => {
 
   // 1. Phone Intelligence
   if (searchType === "phone") {
-    const phoneData = analyzePhoneNumber(rawQuery);
+    const phoneData = await analyzePhoneNumber(rawQuery);
     queryLabel = phoneData.formatted;
     entities = phoneData.entities;
 
@@ -395,12 +395,12 @@ app.post("/api/v1/search/username", async (c) => {
         category: p.category.toLowerCase().includes("messag") ? "social" : (p.category.toLowerCase().includes("finan") ? "identity" : "identity"),
         profile_url: p.url,
         domain: p.icon,
-        status: p.status === "verified" ? "candidate" : p.status,
-        verified: p.status === "verified",
+        status: p.status === "verified" || p.status === "candidate" ? "candidate" : p.status,
+        verified: p.status === "verified" || p.verified === true,
         http_status: 200,
-        confidence: p.status === "verified" ? "high" : p.status === "candidate" ? "low" : "none",
+        confidence: p.status === "verified" || p.verified === true ? "high" : "low",
         identity_name: p.identityName,
-        identifier_display: `Phone: ${phoneData.formatted}`,
+        identifier_display: p.identifierDisplay || `Phone: ${phoneData.formatted}`,
         fields_count: p.fieldsCount || 1,
         extra_fields: p.extraFields,
         detail: p.detail,

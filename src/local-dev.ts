@@ -2,7 +2,7 @@ import { serve } from "@hono/node-server";
 import { DatabaseSync } from "node:sqlite";
 import fs from "node:fs";
 import path from "node:path";
-import app, { type Env } from "./index";
+import { app, type Env } from "./index";
 
 const dbPath = path.resolve(process.cwd(), "shadowtrace.db");
 const sqlite = new DatabaseSync(dbPath);

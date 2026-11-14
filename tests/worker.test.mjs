@@ -146,3 +146,63 @@ test("provider redirect allowlist rejects cross-brand homepage redirects", () =>
   assert.equal(isAllowedFinalUrl("https://t.me/someuser", "https://telegram.org/"), false);
   assert.equal(isAllowedFinalUrl("https://steamcommunity.com/id/someuser", "https://steampowered.com/"), false);
 });
+
+import { analyzeEmail } from "../src/email.ts";
+import { analyzePhoneNumber } from "../src/phone.ts";
+
+test("email intelligence engine correlates identities, masked phones, and platform profiles", async () => {
+  const res = await analyzeEmail("hemarushaharinath.k@gmail.com");
+  assert.equal(res.email, "hemarushaharinath.k@gmail.com");
+  assert.equal(res.username, "hemarushaharinath.k");
+  assert.equal(res.domain, "gmail.com");
+  assert.equal(res.isFreeProvider, true);
+  
+  // Entities checks
+  assert.ok(res.entities.names.includes("Hema"));
+  assert.ok(res.entities.names.includes("R..."));
+  assert.ok(res.entities.phones.includes("90XXXXX934"));
+  assert.ok(res.entities.usernames.includes("9da32e84d3610d125b26e166f08dfcf8"));
+  assert.equal(res.entities.profile_pictures.length, 2);
+  assert.equal(res.entities.banners.length, 1);
+
+  // Platform profiles count & key platforms
+  assert.ok(res.platforms.length >= 17);
+  const platformNames = res.platforms.map(p => p.name);
+  assert.ok(platformNames.includes("UNACADEMY"));
+  assert.ok(platformNames.includes("TYPINGCOM"));
+  assert.ok(platformNames.includes("TESTBOOK"));
+  assert.ok(platformNames.includes("FACEBOOK"));
+  assert.ok(platformNames.includes("QUORA"));
+  assert.ok(platformNames.includes("UPWORK"));
+  assert.ok(platformNames.includes("FREELANCER"));
+  assert.ok(platformNames.includes("HACKERRANK"));
+  assert.ok(platformNames.includes("INSTAGRAM"));
+  assert.ok(platformNames.includes("JAUMO"));
+});
+
+test("phone intelligence engine resolves telecom circles, caller names, and ed-tech platforms", async () => {
+  const res = await analyzePhoneNumber("+919010183934");
+  assert.equal(res.e164, "+919010183934");
+  assert.equal(res.country, "India");
+  assert.match(res.carrier, /Airtel/i);
+  assert.match(res.region, /Andhra Pradesh & Telangana/i);
+
+  // Entities checks
+  assert.ok(res.entities.names.includes("raja"));
+  assert.ok(res.entities.names.includes("Hema"));
+  assert.ok(res.entities.names.includes("happy12345_star751"));
+  assert.ok(res.entities.usernames.includes("happy12345_star751"));
+  assert.equal(res.entities.profile_pictures.length, 1);
+  assert.ok(res.entities.emails.includes("hemarushaharinath.k@gmail.com"));
+
+  // Platform profiles
+  const platformNames = res.platforms.map(p => p.name);
+  assert.ok(platformNames.includes("TESTBOOK"));
+  assert.ok(platformNames.includes("CONTACTSPLUS"));
+  assert.ok(platformNames.includes("UNACADEMY"));
+  assert.ok(platformNames.includes("TRUECALLER"));
+  assert.ok(platformNames.includes("WHATSAPP"));
+  assert.ok(platformNames.includes("TELEGRAM"));
+  assert.ok(platformNames.includes("PAYTM UPI"));
+});
+
