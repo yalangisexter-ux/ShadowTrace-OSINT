@@ -329,7 +329,7 @@ export async function analyzeIP(input: string): Promise<IPResult> {
     country, countryCode, region, city, postal, latitude, longitude, timezone,
     asn, asnOrg, isp, cloudProvider, flagUrl,
     entities: {
-      names: hostname ? [hostname] : [],
+      names: [],
       profile_pictures: [], banners: [], usernames: [], emails: [], phones: [],
     },
     platforms,
