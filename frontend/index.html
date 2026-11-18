@@ -1428,9 +1428,7 @@ function renderPlatformCards() {
             </button>
           ` : `<span></span>`}
 
-          <a class="direct-link-btn" href="${escapeHtml(item.profile_url)}" target="_blank" rel="noopener noreferrer">
-            ${item.status === "observed" ? "Open Source ➔" : "Review Candidate ➔"}
-          </a>
+          ${item.profile_url ? `<a class="direct-link-btn" href="${escapeHtml(item.profile_url)}" target="_blank" rel="noopener noreferrer">${item.status === "observed" ? "Open Source ➔" : "Review Candidate ➔"}</a>` : `<span class="direct-link-btn" style="opacity:.55;cursor:default">Local Evidence</span>`}
         </div>
       </div>
     `;
