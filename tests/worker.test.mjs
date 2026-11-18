@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import {
   validateUsername,
   PROVIDERS,
@@ -420,4 +421,24 @@ test("HTML username matches require both exact page metadata and exact final pro
   assert.equal(profilePathMatchesUsername("https://other.example/octocat", "octocat"), false);
   assert.equal(profilePathMatchesUsername("https://octocat.substack.com", "octocat"), true);
   assert.equal(profilePathMatchesUsername("https://someone-else.substack.com", "octocat"), false);
+});
+
+
+test("OSINT toolbox catalog has honest native-versus-reference availability", async () => {
+  const raw = await readFile(new URL("../frontend/osint-tools.json", import.meta.url), "utf8");
+  const catalog = JSON.parse(raw);
+  assert.equal(catalog.source.name, "Z4nzu/hackingtool");
+  assert.equal(catalog.source.license, "MIT");
+  assert.ok(catalog.source.commit);
+  assert.ok(catalog.tools.length >= 15);
+  const native = catalog.tools.filter(tool => tool.status === "integrated");
+  const references = catalog.tools.filter(tool => tool.status === "reference");
+  assert.ok(native.length >= 7);
+  assert.ok(references.length >= 5);
+  for (const tool of catalog.tools) {
+    assert.ok(tool.id && tool.name && tool.category && tool.description && tool.url);
+    assert.ok(["integrated", "reference"].includes(tool.status));
+    if (tool.status === "integrated") assert.ok(["username", "email", "phone", "domain", "ip", "crypto", "metadata"].includes(tool.searchType));
+    if (tool.status === "reference") assert.equal(tool.searchType, undefined);
+  }
 });
