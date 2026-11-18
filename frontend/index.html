@@ -873,8 +873,8 @@ main {
   <div id="resultsArea" class="hidden">
     <!-- Summary Headline -->
     <div class="search-summary-headline">
-      <div class="profiles-found-count"><span id="foundProfilesCount">0</span> profiles found · <span id="scanTimeSec">1.4s</span></div>
-      <div class="profiles-seen-timeline">First seen <span id="firstSeenDate">—</span> · Last seen <span id="lastSeenDate">—</span></div>
+      <div class="profiles-found-count"><span id="foundProfilesCount">0</span> candidate profiles · <span id="observedCount">0</span> technical observations · <span id="scanTimeSec">—</span></div>
+      <div class="profiles-seen-timeline">Historical first seen <span id="firstSeenDate">Not supplied</span> · Historical last seen <span id="lastSeenDate">Not supplied</span></div>
     </div>
 
     <!-- Identity Entities Drawer (Avatars, Names, Phones, Emails, Usernames) -->
@@ -1244,8 +1244,10 @@ function renderSearchResults(data) {
   currentThreatMatrix = data.threat_matrix || null;
 
   const matches = currentResults.filter(e => e.status === "candidate").length;
+  const observations = currentResults.filter(e => e.status === "observed").length;
   el("foundProfilesCount").textContent = matches;
-  el("filteredCount").textContent = matches;
+  el("observedCount").textContent = observations;
+  el("filteredCount").textContent = matches + observations;
 
   el("firstSeenDate").textContent = currentEntities.first_seen || "—";
   el("lastSeenDate").textContent = currentEntities.last_seen || "—";
@@ -1366,7 +1368,7 @@ function handleFilterInput(query) {
 
 function renderPlatformCards() {
   const container = el("platformsGrid");
-  let list = currentResults.filter(e => e.status === "candidate");
+  let list = currentResults.filter(e => e.status === "candidate" || e.status === "observed");
 
   if (filterQuery) {
     list = list.filter(e => 
@@ -1380,7 +1382,7 @@ function renderPlatformCards() {
   el("filteredCount").textContent = list.length;
 
   if (list.length === 0) {
-    container.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--text-muted)">No platforms match your filter.</div>`;
+    container.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--text-muted)">No candidate profiles or technical observations match your filter.</div>`;
     return;
   }
 
@@ -1397,7 +1399,7 @@ function renderPlatformCards() {
               <img src="${item.extra_fields && item.extra_fields.Avatar ? escapeHtml(item.extra_fields.Avatar) : faviconUrl}" alt="${escapeHtml(item.provider)}" onerror="this.src='${faviconUrl}'">
             </div>
             <div class="platform-titles">
-              <div class="platform-name">${escapeHtml(item.provider)}</div>
+              <div class="platform-name">${escapeHtml(item.provider)} <span style="margin-left:6px;font-size:10px;letter-spacing:.04em;color:${item.status === "observed" ? "var(--cyan)" : "var(--amber)"}">${item.status === "observed" ? "OBSERVED" : "CANDIDATE"}</span></div>
               ${item.identity_name ? `<div class="identity-realname">${escapeHtml(item.identity_name)}</div>` : ''}
             </div>
           </div>
@@ -1427,7 +1429,7 @@ function renderPlatformCards() {
           ` : `<span></span>`}
 
           <a class="direct-link-btn" href="${escapeHtml(item.profile_url)}" target="_blank" rel="noopener noreferrer">
-            Visit Profile ➔
+            ${item.status === "observed" ? "Open Source ➔" : "Review Candidate ➔"}
           </a>
         </div>
       </div>
@@ -1463,7 +1465,7 @@ function renderAIBriefing() {
 
   const radar = currentAI.threat_radar || {};
   const score = radar.score || 0;
-  const level = radar.level || "LOW";
+  const level = radar.level || "UNKNOWN";
   el("aiRadarScore").textContent = score + "/100";
   el("aiRadarLevel").textContent = level;
 
@@ -1521,9 +1523,9 @@ function renderThreatMatrix() {
   const matrix = currentThreatMatrix || {};
   const score = matrix.overall_threat_score ?? matrix.score ?? 0;
   const level = matrix.level || (score >= 50 ? "ELEVATED" : "LOW");
-  const exposureSummary = matrix.exposure_summary || "Reconnaissance complete";
-  const credentialRisk = matrix.credential_reuse_risk || "Not established";
-  const phishingSurface = matrix.phishing_surface || "Moderate";
+  const exposureSummary = matrix.exposure_summary || "No source-backed risk assessment available";
+  const credentialRisk = matrix.credential_reuse_risk || "Not assessed";
+  const phishingSurface = matrix.phishing_surface || "Not assessed";
 
   const cards = [
     `
@@ -1537,20 +1539,20 @@ function renderThreatMatrix() {
       <div class="matrix-card">
         <div class="matrix-card-title">Credential Exposure Risk</div>
         <div class="matrix-card-val" style="color:var(--amber)">${escapeHtml(credentialRisk)}</div>
-        <div class="matrix-card-desc">Evaluated across public leak indexes & breach signatures without password transmission.</div>
+        <div class="matrix-card-desc">No breach result is asserted unless a source-backed indicator is returned.</div>
       </div>
     `,
     `
       <div class="matrix-card">
         <div class="matrix-card-title">Phishing & Attack Surface</div>
         <div class="matrix-card-val">${escapeHtml(phishingSurface)}</div>
-        <div class="matrix-card-desc">Direct communications surface mapped to public messaging and recovery anchors.</div>
+        <div class="matrix-card-desc">Phone and email indicators do not prove messaging registration or account ownership.</div>
       </div>
     `,
     `
       <div class="matrix-card">
-        <div class="matrix-card-title">Zero-Knowledge Audit</div>
-        <div class="matrix-card-val" style="color:var(--green)">k-Anonymity Verified</div>
+        <div class="matrix-card-title">Privacy-preserving password audit</div>
+        <div class="matrix-card-val" style="color:var(--cyan)">On-demand check</div>
         <div class="matrix-card-desc">
           <button class="outline" style="margin-top:8px;font-size:12px;padding:4px 10px;" onclick="openExposureModal()">Audit Password Leaks</button>
         </div>
@@ -1646,7 +1648,7 @@ function initOrUpdateGraph() {
     };
     graphNodes.push(rootNode);
 
-    const candidates = currentResults.filter(e => e.status === "candidate");
+    const candidates = currentResults.filter(e => e.status === "candidate" || e.status === "observed");
     candidates.forEach((item, idx) => {
       const angle = (idx / Math.max(candidates.length, 1)) * Math.PI * 2;
       const dist = 140 + (idx % 3) * 35;
