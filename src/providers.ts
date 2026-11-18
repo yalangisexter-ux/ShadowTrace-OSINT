@@ -20,7 +20,7 @@ export interface CheckResult {
   category: string;
   profile_url: string;
   domain: string;
-  status: "candidate" | "not_found" | "inconclusive";
+  status: "candidate" | "observed" | "not_found" | "inconclusive";
   http_status: number | null;
   confidence: "none" | "low" | "medium" | "high";
   detail: string;
