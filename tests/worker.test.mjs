@@ -344,7 +344,7 @@ test("AI summary never fabricates historical events or identity attribution", ()
   assert.equal(ai.threatLevel, "UNKNOWN");
   assert.equal(ai.threatScore, 0);
   assert.equal(ai.timeline.length, 0);
-  assert.match(ai.executiveSummary, /No person or account ownership is established/i);
+  assert.match(ai.executiveSummary, /does not assert that separate records belong to the same person/i);
   assert.equal(ai.executiveSummary.includes("Primary Identity Attribution"), false);
 });
 
