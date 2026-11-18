@@ -79,8 +79,9 @@ async function queryPgpKeyserver(email: string): Promise<{ names: string[]; altE
         .replace(/<[^>]*>/g, " ")
         .replace(emailMatch?.[0] || "", " ")
         .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&")
+        .replace(/[<>()]/g, " ")
         .replace(/\s+/g, " ").trim();
-      if (emailMatch?.[0] && emailMatch[0].toLowerCase() !== email) altEmails.add(emailMatch[0].toLowerCase());
+      if (emailMatch?.[0] && emailMatch[0].toLowerCase() !== email.toLowerCase()) altEmails.add(emailMatch[0].toLowerCase());
       if (name.length > 1 && !name.includes("@")) names.add(name);
     }
     return { names: Array.from(names), altEmails: Array.from(altEmails), status: res.status };
