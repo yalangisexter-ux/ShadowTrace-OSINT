@@ -32,6 +32,8 @@ export interface PhoneResult {
     url: string;
     status: "observed" | "candidate" | "inconclusive";
     verified?: boolean;
+    confidence?: "high" | "medium" | "low" | "none";
+    httpStatus?: number | null;
     identityName?: string;
     identifierDisplay?: string;
     fieldsCount?: number;
