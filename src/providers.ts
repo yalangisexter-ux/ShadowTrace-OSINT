@@ -420,7 +420,8 @@ export function extractProfileSignals(html: string, username: string, baseUrl: s
       }
     } catch {}
   }
-  return { title, description, displayName, avatar, links: Array.from(links), titleMentionsUsername: Boolean(title && title.toLowerCase().includes(username.toLowerCase())) };
+  const titleTokens = title.toLowerCase().split(/[^a-z0-9._-]+/).filter(Boolean);
+  return { title, description, displayName, avatar, links: Array.from(links), titleMentionsUsername: titleTokens.includes(username.toLowerCase()) };
 }
 
 interface PageFingerprint { title: string; words: Set<string>; }
@@ -577,63 +578,45 @@ export async function checkProvider(
       let isGithubCandidate = false;
       let ghBio = "";
       let ghName = "";
-      let ghAvatar = `https://github.com/${username}.png`;
+      let ghAvatar = "";
       let ghRepos = 0;
       let ghFollowers = 0;
 
       if (status === 200) {
         try {
           const d: any = await response.json();
-          isGithubCandidate = true;
-          ghRepos = d.public_repos ?? 0;
-          ghFollowers = d.followers ?? 0;
-          ghBio = d.bio || "";
-          ghName = d.name || "";
-          ghAvatar = d.avatar_url || ghAvatar;
+          if (typeof d.login === "string" && d.login.toLowerCase() === username.toLowerCase()) {
+            isGithubCandidate = true;
+            ghRepos = Number(d.public_repos || 0);
+            ghFollowers = Number(d.followers || 0);
+            ghBio = typeof d.bio === "string" ? d.bio : "";
+            ghName = typeof d.name === "string" ? d.name : "";
+            ghAvatar = typeof d.avatar_url === "string" ? d.avatar_url : "";
+          } else {
+            state = "inconclusive";
+            detail = "GitHub API response did not confirm the exact requested login.";
+          }
         } catch {}
       } else if (status === 404) {
         state = "not_found";
         confidence = "none";
         detail = "GitHub user does not exist.";
       } else {
-        // Fallback: Check GitHub direct endpoint & HTML
-        try {
-          const imgRes = await fetch(`https://github.com/${encodeURIComponent(username)}.png`, {
-            method: "GET",
-            headers: { "User-Agent": USER_AGENT },
-            redirect: "manual",
-          });
-          if (imgRes.status === 302 || imgRes.status === 200) {
-            isGithubCandidate = true;
-            const htmlRes = await fetch(`https://github.com/${encodeURIComponent(username)}`, {
-              method: "GET",
-              headers: { "User-Agent": USER_AGENT },
-            });
-            if (htmlRes.ok) {
-              const html = await htmlRes.text();
-              const titleMatch = html.match(/<title>(.*?)\((.*?)\) · GitHub<\/title>/i);
-              if (titleMatch && titleMatch[2]) {
-                ghName = titleMatch[2].trim();
-              }
-            }
-          } else if (imgRes.status === 404) {
-            state = "not_found";
-            confidence = "none";
-            detail = "GitHub user does not exist.";
-          }
-        } catch {}
+        state = status === 404 ? "not_found" : "inconclusive";
+        confidence = "none";
+        detail = status === 404 ? "GitHub user does not exist." : `GitHub API lookup unavailable (HTTP ${status}).`;
       }
 
       if (isGithubCandidate) {
         state = "candidate";
         confidence = "high";
-        identityName = ghName || username;
+        identityName = ghName || undefined;
         identifierDisplay = `@${username}`;
         fieldsCount = 3;
         extraFields = {
-          "Full Name": ghName || username,
+          ...(ghName ? { "Display name": ghName } : {}),
           "Profile": targetUrl,
-          "Avatar": ghAvatar,
+          ...(ghAvatar ? { "Avatar": ghAvatar } : {}),
           ...(ghRepos ? { "Public Repositories": String(ghRepos) } : {}),
           ...(ghFollowers ? { "Followers": String(ghFollowers) } : {}),
           ...(ghBio ? { "Bio": ghBio } : {})
@@ -949,12 +932,13 @@ export async function checkProvider(
           } else {
             const signals = extractProfileSignals(html, username, finalUrl);
             const markerMatch = provider.existsMarkers.some(marker => body.includes(marker.toLowerCase()));
-            if (signals.titleMentionsUsername || markerMatch) {
+            if (signals.titleMentionsUsername) {
               state = "candidate";
-              confidence = signals.titleMentionsUsername && markerMatch ? "high" : "medium";
-              identityName = signals.displayName || username;
+              confidence = markerMatch ? "high" : "medium";
+              identityName = signals.displayName && signals.displayName.toLowerCase() !== username.toLowerCase()
+                ? signals.displayName : undefined;
               extraFields = {
-                ...(signals.displayName ? { "Display name": signals.displayName } : {}),
+                ...(identityName ? { "Display name": identityName } : {}),
                 ...(signals.avatar ? { "Avatar": signals.avatar } : {}),
                 ...(signals.description ? { "Description": signals.description.slice(0, 300) } : {}),
                 ...(signals.links.length ? { "Links": signals.links.join("; ") } : {})
@@ -965,7 +949,9 @@ export async function checkProvider(
             } else {
               state = "inconclusive";
               confidence = "none";
-              detail = "HTTP 200 response lacked profile-specific evidence; not counted as a match.";
+              detail = markerMatch
+                ? "Generic profile markers were present, but the requested username was not confirmed in page metadata; not counted as a match."
+                : "HTTP 200 response lacked profile-specific evidence; not counted as a match.";
             }
           }
         }
@@ -985,7 +971,6 @@ export async function checkProvider(
     }
 
     if (state === "candidate") {
-      identityName = identityName || username;
       identifierDisplay = identifierDisplay || `@${username} on ${provider.name}`;
       fieldsCount = Math.max(fieldsCount, 1);
       extraFields = {
