@@ -1,101 +1,84 @@
-# ShadowTrace OSINT (Cloudflare Edition)
+# ShadowTrace OSINT — Cloudflare Worker
 
-A privacy-conscious OSINT workspace for researching **public usernames** across a curated set of public websites. ShadowTrace records the source URL, timestamp, response status, and confidence label for each check.
+ShadowTrace is a Cloudflare-hosted, evidence-first OSINT workspace. It collects public-source technical observations and candidate profile leads, preserving source URLs, collection timestamps, provider response status, and confidence.
 
-> ShadowTrace is an independent implementation and is not affiliated with Fingerprint.to. A responding profile page is only a candidate match—not proof of identity.
+> A candidate profile is not proof of identity. Separate indicators are not assumed to belong to the same person.
 
-## Architecture: Cloudflare Workers + D1 + Pages
+## Production architecture
 
-This application has been migrated from a monolithic server to a globally distributed, edge-native architecture on Cloudflare:
+- **Runtime:** Cloudflare Workers + Hono
+- **Static UI:** Worker Static Assets from `./frontend`
+- **Database:** Cloudflare D1 (`shadowtrace-db`)
+- **Authentication:** PBKDF2 password hashing and HMAC-signed access tokens
+- **Deployment config:** `wrangler.toml`
 
-- **Frontend:** Responsive SPA static assets served via Cloudflare Pages / Workers Static Assets.
-- **API Runtime:** Edge-native Cloudflare Worker powered by [Hono](https://hono.dev/) with zero cold-starts.
-- **Database:** [Cloudflare D1](https://developers.cloudflare.com/d1/) serverless SQL database with automated schema migration.
-- **Authentication:** Web Crypto API standard PBKDF2-SHA256 password hashing and expiring HMAC-SHA256 JWT access tokens.
-- **Concurrent Subrequests:** Parallel OSINT lookups across 20+ curated public platforms executed concurrently at Cloudflare's edge.
+The existing Worker and D1 binding are retained. The evidence-quality corrections in this release do not recreate, reset, or migrate the database.
 
----
+## Current collector coverage
 
-## Quickstart & Local Development
+| Collector | What it actually does | Important limitation |
+|---|---|---|
+| Domain | Live DNS A/AAAA/MX/NS/TXT/DMARC, crt.sh Certificate Transparency, RDAP | A missing record is not proof of compromise |
+| IP | ipwho.is GeoIP/network registration, Google PTR, Shodan InternetDB | GeoIP is approximate network location; Shodan is indexed data, not a live scan |
+| Email | Domain MX, public Gravatar, exact-match GitHub commit-author email, public OpenPGP user IDs | MX does not prove mailbox existence; candidate associations do not prove ownership |
+| Username | Public profile checks and exact-username API responses | Generic HTTP 200 pages and generic markers are not counted as matches |
+| Phone | E.164-like normalization and conservative country-code formatting | No carrier, subscriber name, WhatsApp/Telegram account, Truecaller identity, or UPI handle is inferred |
+| Cryptocurrency | Address-format recognition; live Bitcoin and Ethereum public-ledger reads | Format recognition is not checksum/ownership verification; no wallet clustering or AML clearance |
+| Metadata | Hash of supplied text/data-URL bytes and embedded text indicators | No arbitrary remote URL fetch; no synthetic EXIF, GPS, camera, or document-author data |
 
-### Prerequisites
-- Node.js 20+
-- Cloudflare Wrangler CLI (included in devDependencies)
+## Evidence semantics
 
-### 1. Install Dependencies
+- `observed`: a provider or deterministic parser returned the stated technical fact.
+- `candidate`: a public provider returned a profile/record that may be associated with the query.
+- `not_found`: a successful provider response returned no matching record. This does not prove global absence.
+- `inconclusive`: provider timeout, rate limit, access restriction, malformed response, or insufficient evidence.
+
+A `verified` provider response confirms only that the provider returned the relevant record. It does not verify a real-world person's identity or ownership of an account.
+
+Historical first-seen and last-seen dates are displayed only when an upstream source actually supplies them. The current timeline records collection timestamps, not invented historical events.
+
+## Analysis and risk scoring
+
+The current summary engine is deterministic and rule-based. It is **not a connected generative AI model**. It summarizes evidence counts, source details, and collection timestamps without claiming identity attribution.
+
+Threat scoring is marked `UNKNOWN / UNASSESSED` unless an explicit source-backed vulnerability or breach indicator is present. No score is inferred from profile counts, missing SPF/DMARC, phone formatting, or failed lookups. An unassessed result is not a clean bill of health.
+
+## Local development
+
+Requirements: Node.js 22+.
+
 ```bash
-npm install
-```
-
-### 2. Run Test Suite
-```bash
+npm ci
 npm test
-```
-
-### 3. Local Cloudflare Development
-```bash
+npm run typecheck
 npm run dev
 ```
-Open [http://localhost:8787](http://localhost:8787) to interact with the web workspace.
 
----
+Open http://localhost:8787. The Worker uses the bindings in `wrangler.toml`; for local D1 development, apply the existing migrations with Wrangler.
 
-## Production Deployment to Cloudflare
+## Production deployment
 
-### Step 1: Login to Cloudflare Wrangler
 ```bash
 npx wrangler login
+npx wrangler deploy
 ```
 
-### Step 2: Create your Cloudflare D1 Database
-```bash
-npx wrangler d1 create shadowtrace-db
-```
-Wrangler will output the `database_id`. Update your `wrangler.toml`:
-```toml
-[[d1_databases]]
-binding = "DB"
-database_name = "shadowtrace-db"
-database_id = "<YOUR_DATABASE_ID_FROM_STEP_2>"
-```
+The deployed Worker is named `shadowtrace-osint` and uses the existing D1 database binding in `wrangler.toml`. Do not create a replacement D1 database or run destructive SQL during a code-only release.
 
-### Step 3: Apply the SQL Schema Migrations to D1
-```bash
-npx wrangler d1 migrations apply shadowtrace-db --remote
-```
-*(Or execute `npx wrangler d1 execute shadowtrace-db --remote --file=./schema.sql`)*
+Before exposing the service publicly, configure a unique `SECRET_KEY` using `npx wrangler secret put SECRET_KEY`. Rotating this key invalidates existing access tokens; users must sign in again. Password hashes and D1 investigation records are not changed by token-secret rotation.
 
-### Step 4: Set the JWT Production Secret Key
-Generate a strong secret (32+ characters) and store it securely in Cloudflare:
-```bash
-npx wrangler secret put SECRET_KEY
-```
+## API
 
-### Step 5: Deploy
-```bash
-npm run deploy
-```
+- `GET /healthz`
+- `GET /api/v1/plugins`
+- `POST /api/v1/search/username`
+- `POST /api/v1/collect/domain` (if enabled in the current Worker routes)
+- `GET /api/v1/search/runs`
+- `GET /api/v1/search/runs/:run_id`
+- Report endpoints for Markdown, CSV, and HTML
 
----
+See the live OpenAPI/route documentation exposed by the deployed Worker.
 
-## API Specification
+## Responsible use
 
-| Method | Endpoint | Purpose |
-|---|---|---|
-| GET | `/healthz` | Health check & system diagnostics |
-| POST | `/api/v1/auth/register` | Create analyst account |
-| POST | `/api/v1/auth/login` | Sign in & receive Bearer JWT |
-| GET | `/api/v1/auth/me` | Current account details |
-| POST | `/api/v1/security/password-exposure` | Authenticated k-anonymity password exposure check (sends only a 5-character SHA-1 prefix) |
-| POST | `/api/v1/search/username` | Run concurrent public username checks |
-| GET | `/api/v1/search/runs` | List past investigations |
-| GET | `/api/v1/search/runs/:run_id` | Read detailed investigation evidence |
-| GET | `/api/v1/search/runs/:run_id/report.md` | Download Markdown investigation report |
-
----
-
-## Responsible-Use Boundaries
-
-Use ShadowTrace only for legitimate security research and investigations with a lawful basis. Do not use it to stalk, harass, discriminate, expose private individuals, or make consequential decisions about a person. Respect each provider's terms, robots policies, and rate limits.
-
-This build checks public profile pages and provides an optional authenticated Pwned Passwords range check. The password exposure check sends only the first five characters of a SHA-1 digest to the provider; the full password is not sent or stored. It does **not** access private accounts, bypass authentication, download breached/stolen datasets, enumerate identities by email or phone, infer an individual's location, or expose sensitive personal information.
+Use only public sources and provider-supported access. Respect terms, rate limits, and applicable law. Do not bypass authentication, paywalls, CAPTCHAs, or access controls; do not use the service for stalking, harassment, doxxing, discrimination, or consequential decisions about private individuals. Do not treat public-profile matches as identity proof.
