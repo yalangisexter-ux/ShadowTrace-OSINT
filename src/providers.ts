@@ -484,6 +484,22 @@ async function getSoft404Baseline(probeUrl: string, targetUrl: string, username:
   return pending;
 }
 
+export function profilePathMatchesUsername(profileUrl: string, username: string, providerDomain: string): boolean {
+  try {
+    const url = new URL(profileUrl);
+    const host = url.hostname.toLowerCase().replace(/^www\\./, "");
+    const domain = providerDomain.toLowerCase().replace(/^www\\./, "");
+    const wanted = decodeURIComponent(username).toLowerCase();
+    if (domain === "substack.com") return host === `${wanted}.substack.com`;
+    if (host !== domain && !host.endsWith(`.${domain}`)) return false;
+    const segments = url.pathname.split("/").filter(Boolean).map(segment => {
+      try { return decodeURIComponent(segment).replace(/^[@~]/, "").toLowerCase(); }
+      catch { return segment.replace(/^[@~]/, "").toLowerCase(); }
+    });
+    return segments.includes(wanted);
+  } catch { return false; }
+}
+
 export function isAllowedFinalUrl(probeUrl: string, finalUrl: string): boolean {
   try {
     const expected = new URL(probeUrl).hostname.toLowerCase().replace(/^www\./, "");
@@ -649,21 +665,10 @@ export async function checkProvider(
         confidence = "none";
         detail = "GitLab user does not exist.";
       } else {
-        // Fallback: Check GitLab HTML page
-        try {
-          const glRes = await fetch(`https://gitlab.com/${encodeURIComponent(username)}`, {
-            method: "GET",
-            headers: { "User-Agent": USER_AGENT },
-          });
-          if (glRes.status === 200) {
-            isGitlabCandidate = true;
-            const html = await glRes.text();
-            const titleMatch = html.match(/<title>(.*?) · GitLab<\/title>/i);
-            if (titleMatch && titleMatch[1]) {
-              glName = titleMatch[1].trim();
-            }
-          }
-        } catch {}
+        // An unavailable or rate-limited API is not evidence that an account exists.
+        state = "inconclusive";
+        confidence = "none";
+        detail = `GitLab API lookup unavailable (HTTP ${status}); no profile match asserted.`;
       }
 
       if (isGitlabCandidate) {
@@ -907,26 +912,10 @@ export async function checkProvider(
         finalUrl.includes("/users/sign_in") ||
         (finalUrl.replace(/\/$/, "") === `https://${provider.domain}`);
 
-      if (status && status >= 300 && status < 400) {
-        const loc = (response.headers.get("location") || "").toLowerCase();
-        if (
-          loc.includes("/login") ||
-          loc.includes("/sign_in") ||
-          loc.includes("/users/sign_in") ||
-          loc === "/" ||
-          loc === `https://${provider.domain}` ||
-          loc === `https://${provider.domain}/` ||
-          loc === `http://${provider.domain}` ||
-          loc === `http://${provider.domain}/`
-        ) {
-          state = "not_found";
-          confidence = "none";
-          detail = "Provider redirected to login or homepage; profile does not exist.";
-        } else {
-          state = "candidate";
-          confidence = layer === 0 ? "high" : "medium";
-          detail = `Provider profile active with canonical redirect.`;
-        }
+      if (status >= 300 && status < 400) {
+        state = "inconclusive";
+        confidence = "none";
+        detail = "Provider returned an unresolved redirect; no profile match asserted.";
       } else if (redirectedToAuthOrHome && status === 200) {
         state = "not_found";
         confidence = "none";
@@ -949,7 +938,8 @@ export async function checkProvider(
           } else {
             const signals = extractProfileSignals(html, username, finalUrl);
             const markerMatch = provider.existsMarkers.some(marker => body.includes(marker.toLowerCase()));
-            if (signals.titleMentionsUsername) {
+            const pathMatchesUsername = profilePathMatchesUsername(finalUrl, username, provider.domain);
+            if (signals.titleMentionsUsername && pathMatchesUsername) {
               state = "candidate";
               confidence = markerMatch ? "high" : "medium";
               identityName = signals.displayName && signals.displayName.toLowerCase() !== username.toLowerCase()
@@ -960,15 +950,13 @@ export async function checkProvider(
                 ...(signals.description ? { "Description": signals.description.slice(0, 300) } : {}),
                 ...(signals.links.length ? { "Links": signals.links.join("; ") } : {})
               };
-              detail = signals.titleMentionsUsername
-                ? "Profile-specific page metadata matches the requested username."
-                : "Provider profile markers found; identity ownership still requires manual review.";
+              detail = "Profile metadata and the final profile URL both match the requested username; this is an account lead, not proof of real-world identity.";
             } else {
               state = "inconclusive";
               confidence = "none";
               detail = markerMatch
-                ? "Generic profile markers were present, but the requested username was not confirmed in page metadata; not counted as a match."
-                : "HTTP 200 response lacked profile-specific evidence; not counted as a match.";
+                ? "Generic profile markers were present, but the exact username was not confirmed by both page metadata and the final URL; not counted as a match."
+                : "HTTP 200 response lacked exact profile evidence in both page metadata and the final URL; not counted as a match.";
             }
           }
         }
