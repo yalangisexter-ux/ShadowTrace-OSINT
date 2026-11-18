@@ -144,7 +144,7 @@ collectorManager.register({
     return {
       query: d.ip,
       type: "ip",
-      label: `${d.ip} (${d.city}, ${d.countryCode})`,
+      label: d.ip,
       entities: d.entities,
       evidence: d.platforms.map(p => ({
         provider: p.name,
