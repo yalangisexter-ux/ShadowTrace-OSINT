@@ -1,0 +1,16 @@
+name: domain.passive
+version: 0.1.0
+category: domain
+entrypoint: app.collectors.domain:DomainCollector
+enabled: true
+execution:
+  mode: async
+  timeout_seconds: 8
+  max_concurrency: 5
+  retries: 1
+  cache_ttl_seconds: 900
+safety:
+  passive_only: true
+  requires_authorized_scope: true
+  allowed_target_types: [domain]
+  prohibited: [port_scanning, brute_force, authenticated_scraping, private_network_targets]
