@@ -42,7 +42,7 @@ export interface CollectorExecutionResult {
     category?: string | null;
     profile_url?: string | null;
     domain?: string | null;
-    status: "candidate" | "inconclusive" | "not_found";
+    status: "observed" | "candidate" | "inconclusive" | "not_found";
     verified?: boolean;
     http_status?: number | null;
     confidence?: "high" | "medium" | "low" | "none" | null;
@@ -117,16 +117,15 @@ collectorManager.register({
       label: d.domain,
       entities: {
         names: [d.domain],
-        profile_pictures: [`https://www.google.com/s2/favicons?domain=${encodeURIComponent(d.domain)}&sz=64`],
+        profile_pictures: [],
         banners: [],
         usernames: [],
-        emails: d.mailServers.slice(0, 2),
+        emails: [],
         phones: [],
-        first_seen: "Cloudflare Edge Registry",
       },
       evidence: d.evidence.map(e => ({
         ...e,
-        verified: e.status === "candidate" && e.confidence === "high",
+        verified: e.status === "observed",
       })),
     };
   },
@@ -152,10 +151,10 @@ collectorManager.register({
         category: p.category,
         profile_url: p.url,
         domain: p.icon,
-        status: p.status === "verified" || p.status === "candidate" ? "candidate" : p.status,
+        status: p.status,
         verified: p.verified === true,
-        http_status: 200,
-        confidence: p.verified ? "high" : "low",
+        http_status: p.httpStatus ?? null,
+        confidence: p.confidence || (p.verified ? "high" : p.status === "candidate" ? "medium" : "none"),
         identity_name: p.identityName,
         identifier_display: p.identifierDisplay,
         fields_count: p.fieldsCount || 1,
@@ -173,7 +172,7 @@ collectorManager.register({
   name: "Reverse Email & Identity Engine",
   version: "1.1.0",
   targetTypes: ["email"],
-  description: "Live cross-platform email verification (Gravatar, Duolingo, GitHub commits, Twitter, Spotify, WordPress, OpenPGP, recovery masks).",
+  description: "Public Gravatar, exact-match GitHub commit, OpenPGP, and domain MX observations.",
   health: async () => ({ ok: true }),
   execute: async (query) => {
     const d = await analyzeEmail(query);
@@ -187,10 +186,10 @@ collectorManager.register({
         category: p.category,
         profile_url: p.url,
         domain: p.icon,
-        status: p.status === "verified" || p.status === "candidate" ? "candidate" : p.status,
+        status: p.status,
         verified: p.verified === true,
-        http_status: 200,
-        confidence: p.verified ? "high" : "low",
+        http_status: p.httpStatus ?? null,
+        confidence: p.confidence || (p.verified ? "high" : p.status === "candidate" ? "medium" : "none"),
         identity_name: p.identityName,
         identifier_display: p.identifierDisplay,
         fields_count: p.fieldsCount || 1,
@@ -208,7 +207,7 @@ collectorManager.register({
   name: "Telecom & Mobile Subscriber Intelligence",
   version: "1.1.0",
   targetTypes: ["phone"],
-  description: "Resolves E.164, Indian telecom circles, carrier allocations, WhatsApp, Telegram, Truecaller, and UPI VPAs.",
+  description: "Normalizes phone-number format only; carrier, subscriber, and platform registrations require independent live sources.",
   health: async () => ({ ok: true }),
   execute: async (query) => {
     const d = await analyzePhoneNumber(query);
@@ -222,10 +221,10 @@ collectorManager.register({
         category: p.category,
         profile_url: p.url,
         domain: p.icon,
-        status: p.status === "verified" || p.status === "candidate" ? "candidate" : p.status,
+        status: p.status,
         verified: p.verified === true,
-        http_status: 200,
-        confidence: p.verified ? "high" : "low",
+        http_status: p.httpStatus ?? null,
+        confidence: p.confidence || (p.verified ? "high" : p.status === "candidate" ? "medium" : "none"),
         identity_name: p.identityName,
         identifier_display: p.identifierDisplay,
         fields_count: p.fieldsCount || 1,
@@ -270,23 +269,18 @@ collectorManager.register({
       }
     }
 
-    const ghCandidate = results.find(r => r.provider === "GitHub" && r.status === "candidate");
-    if (ghCandidate) {
-      discoveredAvatars.add(`https://github.com/${query}.png`);
-    }
-
     return {
       query,
       type: "username",
       label: query,
       entities: {
-        names: discoveredNames.size > 0 ? [query, ...Array.from(discoveredNames)] : [query],
+        names: Array.from(discoveredNames),
         profile_pictures: Array.from(discoveredAvatars),
         banners: [],
         usernames: [query],
         emails: [],
         phones: [],
-        first_seen: "Public Registry",
+
       },
       evidence: results,
     };
