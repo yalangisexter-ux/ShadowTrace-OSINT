@@ -162,12 +162,35 @@ function calculateThreatMatrix(results: any[], queryType: string) {
   const verifiedCount = verified.length;
   const breachCount = results.filter(r => r.verified === true && r.status === "candidate" && /breach|pwned|leak/i.test(r.provider)).length;
   let baseScore = 0;
+
   if (queryType === "domain") {
     const hasSpfIssue = results.some((r) => r.detail && r.detail.includes("MISSING"));
     baseScore = hasSpfIssue ? 65 : 20;
+  } else if (queryType === "ip") {
+    const isBogon = results.some(r => r.extra_fields && r.extra_fields["Bogon State"] && r.extra_fields["Bogon State"].includes("WARNING"));
+    const hasVulns = results.some(r => r.extra_fields && r.extra_fields["Known Vulnerabilities (CVEs)"] && r.extra_fields["Known Vulnerabilities (CVEs)"] !== "None detected");
+    const openPortsField = results.find(r => r.extra_fields && r.extra_fields["Open Ports"])?.extra_fields["Open Ports"];
+    const openPortsCount = (openPortsField && openPortsField !== "None detected") ? openPortsField.split(",").length : 0;
+
+    if (isBogon) {
+      baseScore = 70;
+    } else if (hasVulns) {
+      baseScore = 80;
+    } else if (openPortsCount > 10) {
+      baseScore = 40;
+    } else if (openPortsCount > 0) {
+      baseScore = 20;
+    } else {
+      baseScore = 15;
+    }
+  } else if (queryType === "phone") {
+    baseScore = Math.min(80, 20 + breachCount * 30);
+  } else if (queryType === "email") {
+    baseScore = Math.min(85, 20 + breachCount * 30 + (verifiedCount > 3 ? 10 : 0));
   } else {
-    baseScore = Math.min(85, verifiedCount * 8 + breachCount * 25 + 15);
+    baseScore = Math.min(85, verifiedCount * 5 + breachCount * 25 + 15);
   }
+
   let threatLevel: "LOW" | "MODERATE" | "ELEVATED" | "HIGH" | "CRITICAL" = "LOW";
   if (baseScore >= 75) threatLevel = "CRITICAL";
   else if (baseScore >= 55) threatLevel = "HIGH";

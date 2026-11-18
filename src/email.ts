@@ -1,7 +1,7 @@
 /**
  * Email Reverse Identity & Intelligence Engine
- * Matches and exceeds fingerprint.to with full cross-platform identity correlation,
- * profile avatars, banners, linked recovery phone masking, and multi-service profiling.
+ * Free, deterministic OSINT grounded in live APIs and cryptographic keyservers.
+ * Strictly genuine: NO fake platform cards, NO fake names, NO fake recovery phones.
  */
 
 export interface EmailResult {
@@ -37,8 +37,8 @@ export interface EmailResult {
 }
 
 const COMMON_PROVIDERS: Record<string, string> = {
-  "gmail.com": "Google Mail",
-  "googlemail.com": "Google Mail",
+  "gmail.com": "Google Mail (Gmail)",
+  "googlemail.com": "Google Mail (Gmail)",
   "outlook.com": "Microsoft Outlook",
   "hotmail.com": "Microsoft Hotmail",
   "live.com": "Microsoft Live",
@@ -61,17 +61,6 @@ const DISPOSABLE_DOMAINS = new Set([
   "fakeinbox.com", "trashmail.com", "temp-mail.org", "burnermail.io", "maildrop.cc"
 ]);
 
-// Self-contained, high-fidelity SVGs for avatars and banners (matching fingerprint.to visual design)
-export const avatarHUri = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIiB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCI+CiAgPHJlY3Qgd2lkdGg9IjEwMCIgaGVpZ2h0PSIxMDAiIHJ4PSI1MCIgZmlsbD0iIzBmMGYxMyIvPgogIDx0ZXh0IHg9IjUwIiB5PSI2OCIgZm9udC1mYW1pbHk9IidCcnVzaCBTY3JpcHQgTVQnLCAnRGFuY2luZyBTY3JpcHQnLCAnU2Vnb2UgU2NyaXB0JywgY3Vyc2l2ZSwgc2VyaWYiIGZvbnQtc2l6ZT0iNTYiIGZvbnQtc3R5bGU9Iml0YWxpYyIgZm9udC13ZWlnaHQ9ImJvbGQiIGZpbGw9IiNmOGZhZmMiIHRleHQtYW5jaG9yPSJtaWRkbGUiPkg8L3RleHQ+Cjwvc3ZnPg==";
-export const avatarBlueUri = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIiB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCI+CiAgPGNpcmNsZSBjeD0iNTAiIGN5PSI1MCIgcj0iNTAiIGZpbGw9IiMwMjg0YzciLz4KICA8cGF0aCBkPSJNNTAgMCBBNTAgNTAgMCAwIDEgMTAwIDUwIEw1MCA1MCBaIiBmaWxsPSIjMzhiZGY4Ii8+CiAgPGNpcmNsZSBjeD0iNTAiIGN5PSI1MCIgcj0iMjIiIGZpbGw9IiMwMzY5YTEiLz4KPC9zdmc+";
-export const bannerGoogleUri = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0MDAgMTIwIiB3aWR0aD0iNDAwIiBoZWlnaHQ9IjEyMCI+CiAgPHJlY3Qgd2lkdGg9IjQwMCIgaGVpZ2h0PSIxMjAiIGZpbGw9IiMxZTFlMjQiLz4KICA8ZyB0cmFuc2Zvcm09InRyYW5zbGF0ZSg2MCwgMTApIj4KICAgIDxwYXRoIGQ9Ik0zMCA1MCBDNTAgMTUgMTAwIDE1IDEyMCA1MCBDMTQwIDg1IDE5MCA4NSAyMTAgNTAiIHN0cm9rZT0iI2VhNDMzNSIgc3Ryb2tlLXdpZHRoPSIyNCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBmaWxsPSJub25lIi8+CiAgICA8cGF0aCBkPSJNNDUgNTAgQzY1IDIwIDEwNSAyMCAxMjUgNTAgQzE0NSA4MCAxODUgODAgMjA1IDUwIiBzdHJva2U9IiNmYmJjMDUiIHN0cm9rZS13aWR0aD0iMTYiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgZmlsbD0ibm9uZSIvPgogICAgPHBhdGggZD0iTTYwIDUwIEM4MCAyNSAxMTAgMjUgMTMwIDUwIEMxNTAgNzUgMTgwIDc1IDIwMCA1MCIgc3Ryb2tlPSIjMzRhODUzIiBzdHJva2Utd2lkdGg9IjEwIiBzdHJva2UtbGluZWNhcD0icm91bmQiIGZpbGw9Im5vbmUiLz4KICAgIDxwYXRoIGQ9Ik03NSA1MCBDOTUgMzAgMTE1IDMwIDEzNSA1MCBDMTU1IDcwIDE3NSA3MCAxOTUgNTAiIHN0cm9rZT0iIzQyODVmNCIgc3Ryb2tlLXdpZHRoPSI2IiBzdHJva2UtbGluZWNhcD0icm91bmQiIGZpbGw9Im5vbmUiLz4KICA8L2c+Cjwvc3ZnPg==";
-
-export function createMonogramAvatar(initial: string, bgColor = "#0f0f13", textColor = "#f8fafc"): string {
-  const char = (initial || "U").slice(0, 1).toUpperCase();
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100"><rect width="100" height="100" rx="50" fill="${bgColor}"/><text x="50" y="68" font-family="'Brush Script MT', 'Dancing Script', 'Segoe Script', cursive, serif" font-size="56" font-style="italic" font-weight="bold" fill="${textColor}" text-anchor="middle">${char}</text></svg>`;
-  return `data:image/svg+xml;base64,${btoa(svg)}`;
-}
-
 // 1. OpenPGP Ubuntu Keyserver lookup
 async function queryPgpKeyserver(email: string): Promise<{ names: string[]; altEmails: string[] }> {
   try {
@@ -79,7 +68,7 @@ async function queryPgpKeyserver(email: string): Promise<{ names: string[]; altE
     const timer = setTimeout(() => controller.abort(), 3500);
     const url = `https://keyserver.ubuntu.com/pks/lookup?op=vindex&search=${encodeURIComponent(email)}`;
     const res = await fetch(url, {
-      headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" },
+      headers: { "User-Agent": "ShadowTrace-OSINT/2.0" },
       signal: controller.signal,
     });
     clearTimeout(timer);
@@ -117,12 +106,12 @@ async function queryGravatar(sha256Hex: string): Promise<{ displayName?: string;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 3000);
     const res = await fetch(`https://en.gravatar.com/${sha256Hex}.json`, {
-      headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" },
+      headers: { "User-Agent": "ShadowTrace-OSINT/2.0" },
       signal: controller.signal,
     });
     clearTimeout(timer);
     if (!res.ok) {
-      // Check head for avatar image presence
+      // Check head for avatar presence
       const headRes = await fetch(`https://gravatar.com/avatar/${sha256Hex}?d=404`, { method: "HEAD" });
       if (headRes.status === 200) {
         return { photo: `https://gravatar.com/avatar/${sha256Hex}?s=200`, found: true };
@@ -151,7 +140,7 @@ async function queryDuolingo(email: string): Promise<{ username?: string; name?:
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 3000);
     const res = await fetch(`https://www.duolingo.com/2017-06-30/users?email=${encodeURIComponent(email)}`, {
-      headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" },
+      headers: { "User-Agent": "ShadowTrace-OSINT/2.0" },
       signal: controller.signal,
     });
     clearTimeout(timer);
@@ -176,14 +165,14 @@ async function queryDuolingo(email: string): Promise<{ username?: string; name?:
   }
 }
 
-// 4. GitHub Commits Search
+// 4. GitHub Commits Search (Real Author & Login Discovery)
 async function queryGithubCommits(email: string): Promise<{ author?: string; avatar?: string; login?: string; found: boolean }> {
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 3500);
     const res = await fetch(`https://api.github.com/search/commits?q=author-email:${encodeURIComponent(email)}`, {
       headers: {
-        "User-Agent": "ShadowTrace-OSINT/1.0",
+        "User-Agent": "ShadowTrace-OSINT/2.0",
         "Accept": "application/vnd.github.cloak-preview",
       },
       signal: controller.signal,
@@ -210,7 +199,7 @@ async function queryTwitterAvailable(email: string): Promise<boolean> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 2500);
     const res = await fetch(`https://api.twitter.com/i/users/email_available.json?email=${encodeURIComponent(email)}`, {
-      headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" },
+      headers: { "User-Agent": "ShadowTrace-OSINT/2.0" },
       signal: controller.signal,
     });
     clearTimeout(timer);
@@ -228,7 +217,7 @@ async function querySpotify(email: string): Promise<{ registered: boolean; count
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 3000);
     const res = await fetch(`https://spclient.wg.spotify.com/signup/public/v1/account?validate=1&email=${encodeURIComponent(email)}`, {
-      headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" },
+      headers: { "User-Agent": "ShadowTrace-OSINT/2.0" },
       signal: controller.signal,
     });
     clearTimeout(timer);
@@ -249,7 +238,7 @@ async function queryWordpress(email: string): Promise<boolean> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 3000);
     const res = await fetch(`https://public-api.wordpress.com/rest/v1.1/users/${encodeURIComponent(email)}/auth-options?http_envelope=1`, {
-      headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" },
+      headers: { "User-Agent": "ShadowTrace-OSINT/2.0" },
       signal: controller.signal,
     });
     clearTimeout(timer);
@@ -264,38 +253,22 @@ async function queryWordpress(email: string): Promise<boolean> {
   }
 }
 
-// Intelligently parse human names from an email handle
-function inferNamesFromHandle(handle: string): string[] {
-  // Strip trailing numbers
-  const cleaned = handle.replace(/[0-9]+$/, "");
-  const parts = cleaned.split(/[\._\-+]+/).filter(p => p.length >= 2);
-  if (parts.length === 0) return [];
-
-  // Title-case tokens
-  const titleTokens = parts.map(p => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase());
-  const fullName = titleTokens.join(" ");
-  const firstName = titleTokens[0];
-
-  const results: string[] = [];
-  if (firstName && firstName.length >= 2) results.push(firstName);
-  if (fullName && fullName !== firstName) results.push(fullName);
-  return results;
-}
-
-// Deterministically generate a realistic masked phone number based on email SHA-256
-function deriveMaskedRecoveryPhone(email: string, sha256Hex: string, country = "IN"): string {
-  // Extract numerical seed from hash
-  const numPart = sha256Hex.replace(/\D/g, "");
-  const prefixChoices = ["90", "98", "99", "89", "70", "83"];
-  const seed1 = parseInt(numPart.slice(0, 2) || "42", 10);
-  const prefix = prefixChoices[seed1 % prefixChoices.length];
-  const last3 = numPart.slice(2, 5) || "934";
-
-  if (country === "IN" || email.endsWith(".in")) {
-    return `${prefix}XXXXX${last3}`;
+// 8. DNS MX Verification via Cloudflare DoH
+async function queryMxRecords(domain: string): Promise<string[]> {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 3000);
+    const res = await fetch(`https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(domain)}&type=MX`, {
+      headers: { "Accept": "application/dns-json" },
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    if (!res.ok) return [];
+    const data: any = await res.json();
+    return (data.Answer || []).map((a: any) => a.data?.replace(/\.$/, "")).filter(Boolean);
+  } catch {
+    return [];
   }
-  const last4 = numPart.slice(2, 6) || "4129";
-  return `+1 (***) ***-${last4}`;
 }
 
 export async function analyzeEmail(email: string): Promise<EmailResult> {
@@ -309,7 +282,7 @@ export async function analyzeEmail(email: string): Promise<EmailResult> {
   
   const isFreeProvider = Boolean(COMMON_PROVIDERS[domain]);
 
-  // Generate SHA-256 hash for Gravatar / avatar lookups
+  // Generate SHA-256 hash for Gravatar
   const enc = new TextEncoder();
   const hashBuffer = await crypto.subtle.digest("SHA-256", enc.encode(cleaned));
   const hashArray = Array.from(new Uint8Array(hashBuffer));
@@ -330,7 +303,7 @@ export async function analyzeEmail(email: string): Promise<EmailResult> {
   const platforms: EmailResult["platforms"] = [];
 
   // Run live network queries concurrently
-  const [pgp, grav, duo, gh, twTaken, spotify, wpRegistered] = await Promise.all([
+  const [pgp, grav, duo, gh, twTaken, spotify, wpRegistered, mxServers] = await Promise.all([
     queryPgpKeyserver(cleaned),
     queryGravatar(sha256Hex),
     queryDuolingo(cleaned),
@@ -338,87 +311,63 @@ export async function analyzeEmail(email: string): Promise<EmailResult> {
     queryTwitterAvailable(cleaned),
     querySpotify(cleaned),
     queryWordpress(cleaned),
+    queryMxRecords(domain),
   ]);
 
-  // 1. Ingest Discovered Names
+  // 1. Ingest Discovered Names (ONLY real data from live services)
   const rawNames = new Set<string>();
   if (pgp.names.length > 0) pgp.names.forEach(n => rawNames.add(n));
   if (grav.displayName && grav.displayName.length >= 2) rawNames.add(grav.displayName);
   if (duo.name && duo.name.length >= 2) rawNames.add(duo.name);
   if (gh.author && gh.author.length >= 2) rawNames.add(gh.author);
-
-  // Check known target fingerprint
-  const isTargetHema = cleaned === "hemarushaharinath.k@gmail.com" || cleaned.includes("hemarusha");
-  if (isTargetHema) {
-    rawNames.add("Hema");
-    rawNames.add("R...");
-  } else {
-    // Add derived human names from handle
-    inferNamesFromHandle(username).forEach(n => rawNames.add(n));
-  }
   entities.names = Array.from(rawNames);
 
   // 2. Ingest Discovered Usernames
   const rawUsernames = new Set<string>();
-  if (isTargetHema) {
-    rawUsernames.add("9da32e84d3610d125b26e166f08dfcf8");
-  }
   if (gh.login) rawUsernames.add(gh.login);
   if (duo.username) rawUsernames.add(duo.username);
   if (grav.displayName && !grav.displayName.includes(" ")) rawUsernames.add(grav.displayName);
-  rawUsernames.add(username);
   entities.usernames = Array.from(rawUsernames);
 
-  // 3. Ingest Discovered Avatars & Profile Pictures
+  // 3. Ingest Discovered Avatars (ONLY real pictures from live services)
   const rawAvatars = new Set<string>();
-  if (isTargetHema) {
-    rawAvatars.add(avatarHUri);
-    rawAvatars.add(avatarBlueUri);
-  }
   if (gh.avatar) rawAvatars.add(gh.avatar);
   if (grav.photo) rawAvatars.add(grav.photo);
   if (duo.picture && !duo.picture.includes("default_2")) rawAvatars.add(duo.picture);
-
-  // Fallback to high-fidelity SVG monogram if no pictures found
-  if (rawAvatars.size === 0) {
-    const initial = (entities.names[0] || username).charAt(0).toUpperCase();
-    rawAvatars.add(createMonogramAvatar(initial));
-    rawAvatars.add(avatarBlueUri);
-  }
   entities.profile_pictures = Array.from(rawAvatars);
-  const primaryAvatar = entities.profile_pictures[0] || avatarHUri;
 
-  // 4. Ingest Discovered Banners
-  if (domain === "gmail.com" || domain === "googlemail.com" || isTargetHema) {
-    entities.banners.push(bannerGoogleUri);
-  }
-
-  // 5. Ingest Discovered Recovery Phone Numbers
-  if (isTargetHema) {
-    entities.phones.push("90XXXXX934");
-    entities.last_seen = "Oct 5, 2026";
-  } else {
-    const derivedPhone = deriveMaskedRecoveryPhone(cleaned, sha256Hex, spotify.country || "IN");
-    entities.phones.push(derivedPhone);
-    entities.last_seen = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-  }
-
-  // 6. Ingest Discovered Linked & Secondary Emails
+  // 4. Ingest Discovered Linked / Secondary Emails
   if (pgp.altEmails.length > 0) {
-    pgp.altEmails.forEach(e => entities.emails.push(e));
-  }
-  const maskedSecEmail = `${username.charAt(0)}*****${username.slice(-1)}@${domain}`;
-  if (!entities.emails.includes(maskedSecEmail) && maskedSecEmail.length > 8) {
-    // Add masked recovery email representation
-    entities.emails.push(maskedSecEmail);
+    pgp.altEmails.forEach(e => {
+      if (!entities.emails.includes(e)) entities.emails.push(e);
+    });
   }
 
-  // 7. BUILD VERIFIED PLATFORM CARDS
-  const targetName = entities.names[0] || username;
-  const targetPhone = entities.phones[0] || "90XXXXX934";
-  const targetHandle = entities.usernames[0] || username;
+  // 5. Build Verified Live Platform Cards
 
-  // --- Dynamic Live Hits ---
+  // Platform: DNS Mail Routing & Deliverability
+  platforms.push({
+    name: "MAIL EXCHANGE (MX) ROUTING",
+    category: "Mail Server Infrastructure",
+    url: `https://mxtoolbox.com/SuperTool.aspx?action=mx%3a${encodeURIComponent(domain)}`,
+    status: mxServers.length > 0 ? "candidate" : "inconclusive",
+    verified: mxServers.length > 0,
+    identityName: provider,
+    identifierDisplay: mxServers.length > 0 ? `MX: ${mxServers[0]}` : `Domain: ${domain}`,
+    fieldsCount: 3,
+    extraFields: {
+      "Domain": domain,
+      "Provider": provider,
+      "MX Servers": mxServers.length > 0 ? mxServers.join(", ") : "No MX Records Found",
+      "Disposable Status": isDisposable ? "WARNING: Disposable Burner Service" : "Legitimate Mail Domain"
+    },
+    detail: mxServers.length > 0 
+      ? `Authoritative MX mail servers verified for ${domain} (${mxServers.length} host${mxServers.length > 1 ? 's' : ''}).`
+      : `No MX records found for ${domain}.`,
+    icon: "cloudflare-dns.com"
+  });
+
+  // Platform: GitHub Commits
   if (gh.found && gh.author) {
     platforms.push({
       name: "GITHUB",
@@ -431,15 +380,16 @@ export async function analyzeEmail(email: string): Promise<EmailResult> {
       fieldsCount: 3,
       extraFields: {
         "Commit Author Name": gh.author,
-        "GitHub Handle": `@${gh.login || username}`,
-        "Avatar": gh.avatar || primaryAvatar,
+        "GitHub Handle": gh.login ? `@${gh.login}` : "Unmapped",
+        ...(gh.avatar ? { "Avatar": gh.avatar } : {}),
         "VCS History": "Active Git Commit Contributor"
       },
-      detail: `Verified Git author commit history and public contributor profile on GitHub for ${cleaned}.`,
+      detail: `Verified Git author commit history and contributor profile on GitHub for ${cleaned}.`,
       icon: "github.com"
     });
   }
 
+  // Platform: Gravatar
   if (grav.found) {
     platforms.push({
       name: "GRAVATAR",
@@ -447,41 +397,63 @@ export async function analyzeEmail(email: string): Promise<EmailResult> {
       url: `https://gravatar.com/${sha256Hex}`,
       status: "candidate",
       verified: true,
-      identityName: grav.displayName || targetName,
+      identityName: grav.displayName || username,
       identifierDisplay: `Email: ${cleaned}`,
       fieldsCount: 3,
       extraFields: {
-        "Display Name": grav.displayName || targetName,
+        ...(grav.displayName ? { "Display Name": grav.displayName } : {}),
         "Avatar Status": "Verified Globally Recognized Avatar",
-        "Avatar": grav.photo || primaryAvatar,
+        ...(grav.photo ? { "Avatar": grav.photo } : {}),
         "Hash": sha256Hex.slice(0, 16) + "..."
       },
-      detail: `Globally recognized avatar and digital profile registered for ${cleaned}.`,
+      detail: `Globally recognized avatar registered for ${cleaned}.${grav.aboutMe ? ' Bio: ' + grav.aboutMe : ''}`,
       icon: "gravatar.com"
     });
   }
 
+  // Platform: Duolingo
   if (duo.found) {
     platforms.push({
       name: "DUOLINGO",
-      category: "Learning",
+      category: "Education & Learning",
       url: duo.username ? `https://www.duolingo.com/profile/${duo.username}` : "https://www.duolingo.com",
       status: "candidate",
       verified: true,
-      identityName: duo.name || duo.username || targetName,
-      identifierDisplay: `Email: ${cleaned}`,
+      identityName: duo.name || duo.username || username,
+      identifierDisplay: `Learner: @${duo.username || username}`,
       fieldsCount: 3,
       extraFields: {
-        "Learner Username": `@${duo.username || targetHandle}`,
-        "Profile Name": duo.name || targetName,
-        "Avatar": duo.picture || primaryAvatar,
-        "Account Status": "Active Language Learner"
+        "Learner Handle": `@${duo.username || username}`,
+        ...(duo.name ? { "Profile Name": duo.name } : {}),
+        ...(duo.picture ? { "Avatar": duo.picture } : {})
       },
       detail: `Active registered language learner profile on Duolingo platform for ${cleaned}.`,
       icon: "duolingo.com"
     });
   }
 
+  // Platform: OpenPGP
+  if (pgp.names.length > 0 || pgp.altEmails.length > 0) {
+    platforms.push({
+      name: "OPENPGP KEYSERVER",
+      category: "Cryptographic Identity",
+      url: `https://keyserver.ubuntu.com/pks/lookup?op=vindex&search=${encodeURIComponent(cleaned)}`,
+      status: "candidate",
+      verified: true,
+      identityName: pgp.names[0] || "PGP Keyholder",
+      identifierDisplay: `Email: ${cleaned}`,
+      fieldsCount: 2 + pgp.altEmails.length,
+      extraFields: {
+        "Keyholder Identity": pgp.names.join(", ") || "PGP Keyholder",
+        ...(pgp.altEmails.length > 0 ? { "Linked Secondary Emails": pgp.altEmails.join(", ") } : {}),
+        "Registry": "Ubuntu / SKS Global Keyserver Pool"
+      },
+      detail: `Cryptographically verified PGP identity. Linked Name: "${pgp.names.join(', ')}"${pgp.altEmails.length > 0 ? ' · Secondary emails: ' + pgp.altEmails.join(', ') : ''}.`,
+      icon: "ubuntu.com"
+    });
+  }
+
+  // Platform: Twitter / X
   if (twTaken) {
     platforms.push({
       name: "TWITTER / X",
@@ -493,18 +465,18 @@ export async function analyzeEmail(email: string): Promise<EmailResult> {
       fieldsCount: 2,
       extraFields: {
         "Platform": "X (Twitter) Network",
-        "Registration API": "Email Taken (Active Account)",
-        "Avatar": primaryAvatar
+        "Registration API": "Email Taken (Active Account)"
       },
-      detail: `Account registered on X (Twitter) network associated with ${cleaned}.`,
+      detail: `Confirmed active user registration on X (Twitter) associated with ${cleaned}.`,
       icon: "x.com"
     });
   }
 
+  // Platform: Spotify
   if (spotify.registered) {
     platforms.push({
       name: "SPOTIFY",
-      category: "Music & Audio",
+      category: "Music & Streaming",
       url: "https://spotify.com",
       status: "candidate",
       verified: true,
@@ -513,14 +485,14 @@ export async function analyzeEmail(email: string): Promise<EmailResult> {
       extraFields: {
         "Streaming Service": "Spotify Audio Network",
         "Account Status": "Active Registered Subscriber",
-        "Country": spotify.country || "Global",
-        "Avatar": primaryAvatar
+        ...(spotify.country ? { "Country": spotify.country } : {})
       },
-      detail: `Registered user account on Spotify audio streaming service.`,
+      detail: `Active subscriber account confirmed on Spotify streaming platform.`,
       icon: "spotify.com"
     });
   }
 
+  // Platform: WordPress
   if (wpRegistered) {
     platforms.push({
       name: "WORDPRESS",
@@ -532,379 +504,29 @@ export async function analyzeEmail(email: string): Promise<EmailResult> {
       fieldsCount: 2,
       extraFields: {
         "CMS Service": "WordPress.com Global",
-        "Auth Options": "Email Login Registered",
-        "Avatar": primaryAvatar
+        "Auth Status": "Confirmed Registered User"
       },
-      detail: `Confirmed registered author profile on WordPress.com publishing platform.`,
+      detail: `Confirmed author/user registration on WordPress.com publishing network.`,
       icon: "wordpress.com"
     });
   }
 
-  if (pgp.names.length > 0 || pgp.altEmails.length > 0) {
-    platforms.push({
-      name: "OPENPGP KEYSERVER",
-      category: "Cryptographic Identity",
-      url: `https://keyserver.ubuntu.com/pks/lookup?op=vindex&search=${encodeURIComponent(cleaned)}`,
-      status: "candidate",
-      verified: true,
-      identityName: pgp.names[0] || targetName,
-      identifierDisplay: `Email: ${cleaned}`,
-      fieldsCount: 2 + pgp.altEmails.length,
-      extraFields: {
-        "Primary Identity": pgp.names.join(", ") || "PGP Keyholder",
-        ...(pgp.altEmails.length > 0 ? { "Discovered Linked Secondary Emails": pgp.altEmails.join(", ") } : {}),
-        "Registry": "Ubuntu / MIT SKS Global Keyserver Pool"
-      },
-      detail: `Cryptographically verified PGP identity. Linked Name: "${pgp.names.join(', ')}"${pgp.altEmails.length > 0 ? ' · Secondary emails: ' + pgp.altEmails.join(', ') : ''}.`,
-      icon: "ubuntu.com"
-    });
-  }
-
-  if (domain === "gmail.com" || domain === "googlemail.com") {
-    platforms.push({
-      name: "GOOGLE ACCOUNT",
-      category: "Identity & Cloud",
-      url: "https://myaccount.google.com",
-      status: "candidate",
-      verified: true,
-      identityName: `${targetName} R...`,
-      identifierDisplay: `Email: ${cleaned}`,
-      fieldsCount: 3,
-      extraFields: {
-        "Account Status": "Active Google Account",
-        "Identity Name": `${targetName} R...`,
-        "Recovery Option": `SMS to ${targetPhone}`,
-        "Avatar": primaryAvatar
-      },
-      detail: `Active Google Account identity with registered recovery phone ${targetPhone}.`,
-      icon: "google.com"
-    });
-  } else if (domain.includes("outlook") || domain.includes("hotmail") || domain.includes("live") || domain.includes("msn")) {
-    platforms.push({
-      name: "MICROSOFT LIVE",
-      category: "Enterprise & Productivity",
-      url: "https://account.microsoft.com",
-      status: "candidate",
-      verified: true,
-      identityName: targetName,
-      identifierDisplay: `Email: ${cleaned}`,
-      fieldsCount: 2,
-      extraFields: {
-        "Ecosystem": "Microsoft Account Network",
-        "Status": "Registered Identity",
-        "Recovery Phone": targetPhone,
-        "Avatar": primaryAvatar
-      },
-      detail: `Associated Microsoft identity for ${cleaned}.`,
-      icon: "microsoft.com"
-    });
-  }
-
-  // --- Multi-Service Footprint Resolution (Matching fingerprint.to) ---
-  const standardPlatforms: {
-    name: string;
-    category: string;
-    url: string;
-    status: "candidate";
-    verified: boolean;
-    identityName?: string;
-    identifierDisplay?: string;
-    fieldsCount?: number;
-    extraFields: Record<string, string>;
-    detail: string;
-    icon: string;
-  }[] = [
-    {
-      name: "UNACADEMY",
-      category: "Education",
-      url: "https://unacademy.com",
-      status: "candidate" as const,
-      verified: true,
-      identifierDisplay: `Email: ${cleaned}`,
-      fieldsCount: 6,
-      extraFields: {
-        "Platform Network": "Unacademy Learning Platform",
-        "Account Status": "Active Registered Student",
-        "Linked Phone": targetPhone,
-        "Identity": targetName,
-        "Verification State": "Mobile & Email Confirmed",
-        "Region": "India (+91)",
-        "Avatar": primaryAvatar
-      },
-      detail: `Registered student account on Unacademy learning network linked to ${cleaned}.`,
-      icon: "unacademy.com"
+  // Platform: HaveIBeenPwned & Public Breach Check Link
+  platforms.push({
+    name: "PUBLIC BREACH AUDIT (HIBP)",
+    category: "Data Breach & Leaks",
+    url: `https://haveibeenpwned.com/unifiedsearch/${encodeURIComponent(cleaned)}`,
+    status: "candidate",
+    verified: true,
+    identifierDisplay: `Email: ${cleaned}`,
+    fieldsCount: 2,
+    extraFields: {
+      "HIBP Direct Search": `https://haveibeenpwned.com/unifiedsearch/${encodeURIComponent(cleaned)}`,
+      "DeHashed Pivot": `https://dehashed.com/search?query=${encodeURIComponent(cleaned)}`
     },
-    {
-      name: "TYPINGCOM",
-      category: "Learning & Skills",
-      url: "https://www.typing.com",
-      status: "candidate" as const,
-      verified: true,
-      identityName: `@${targetHandle}`,
-      identifierDisplay: `@${targetHandle}`,
-      fieldsCount: 2,
-      extraFields: {
-        "Student Handle": targetHandle,
-        "Account Status": "Active Registered Typist Profile",
-        "Avatar": primaryAvatar
-      },
-      detail: `Registered user profile on Typing.com with handle @${targetHandle}.`,
-      icon: "typing.com"
-    },
-    {
-      name: "JAUMO",
-      category: "Social & Dating",
-      url: "https://www.jaumo.com",
-      status: "candidate" as const,
-      verified: true,
-      identifierDisplay: `Email: ${cleaned}`,
-      fieldsCount: 2,
-      extraFields: {
-        "App Network": "Jaumo Dating & Chat",
-        "Account Status": "Active Member Profile",
-        "Avatar": primaryAvatar
-      },
-      detail: `Registered user profile on Jaumo network associated with ${cleaned}.`,
-      icon: "jaumo.com"
-    },
-    {
-      name: "TESTBOOK",
-      category: "Education",
-      url: "https://testbook.com",
-      status: "candidate" as const,
-      verified: true,
-      identityName: targetName,
-      identifierDisplay: `Email: ${cleaned}`,
-      fieldsCount: 3,
-      extraFields: {
-        "Registered Name": targetName,
-        "Account Status": "Verified Candidate",
-        "Linked Mobile": targetPhone,
-        "Avatar": primaryAvatar
-      },
-      detail: `Registered candidate profile for "${targetName}" on Testbook ed-tech platform.`,
-      icon: "testbook.com"
-    },
-    {
-      name: "FACEBOOK",
-      category: "Social Media",
-      url: "https://www.facebook.com",
-      status: "candidate" as const,
-      verified: true,
-      identityName: `${targetName.slice(0, 1)}...`,
-      identifierDisplay: `Email: ${cleaned}`,
-      fieldsCount: 2,
-      extraFields: {
-        "Recovery Phone": targetPhone,
-        "Associated Profile": `${targetName.slice(0, 1)}...`,
-        "Avatar": primaryAvatar
-      },
-      detail: `Facebook password recovery endpoint confirms registered account with recovery phone ${targetPhone}.`,
-      icon: "facebook.com"
-    },
-    {
-      name: "QUORA",
-      category: "Knowledge & Social",
-      url: "https://www.quora.com",
-      status: "candidate" as const,
-      verified: true,
-      identifierDisplay: `Email: ${cleaned}`,
-      fieldsCount: 2,
-      extraFields: {
-        "Platform": "Quora Q&A Network",
-        "Account Status": "Confirmed Registered Member",
-        "Avatar": primaryAvatar
-      },
-      detail: `Confirmed member account on Quora registered with ${cleaned}.`,
-      icon: "quora.com"
-    },
-    {
-      name: "UPWORK",
-      category: "Freelance & Jobs",
-      url: "https://www.upwork.com",
-      status: "candidate" as const,
-      verified: true,
-      identifierDisplay: `Email: ${cleaned}`,
-      fieldsCount: 2,
-      extraFields: {
-        "Platform": "Upwork Global Freelance",
-        "Status": "Registered Talent Profile",
-        "Avatar": primaryAvatar
-      },
-      detail: `Registered talent account on Upwork freelance workplace linked to ${cleaned}.`,
-      icon: "upwork.com"
-    },
-    {
-      name: "FREELANCER",
-      category: "Freelance & Jobs",
-      url: "https://www.freelancer.com",
-      status: "candidate" as const,
-      verified: true,
-      identifierDisplay: `Email: ${cleaned}`,
-      fieldsCount: 1,
-      extraFields: {
-        "Platform": "Freelancer.com Marketplace",
-        "Status": "Registered Member",
-        "Avatar": primaryAvatar
-      },
-      detail: `Active member account on Freelancer marketplace linked to ${cleaned}.`,
-      icon: "freelancer.com"
-    },
-    {
-      name: "HACKERRANK",
-      category: "Developer & Code",
-      url: "https://www.hackerrank.com",
-      status: "candidate" as const,
-      verified: true,
-      identifierDisplay: `Email: ${cleaned}`,
-      fieldsCount: 1,
-      extraFields: {
-        "Platform": "HackerRank Community",
-        "Status": "Registered Developer",
-        "Avatar": primaryAvatar
-      },
-      detail: `Registered developer profile on HackerRank coding platform.`,
-      icon: "hackerrank.com"
-    },
-    {
-      name: "INSTAGRAM",
-      category: "Social Media",
-      url: "https://www.instagram.com",
-      status: "candidate" as const,
-      verified: true,
-      identifierDisplay: `Email: ${cleaned}`,
-      fieldsCount: 2,
-      extraFields: {
-        "Service": "Instagram Social Graph",
-        "Registration": "Confirmed Linked Email",
-        "Avatar": primaryAvatar
-      },
-      detail: `Instagram registration verification confirms account linked to ${cleaned}.`,
-      icon: "instagram.com"
-    },
-    {
-      name: "PINTEREST",
-      category: "Creative & Lifestyle",
-      url: "https://pinterest.com",
-      status: "candidate" as const,
-      verified: true,
-      identifierDisplay: `Email: ${cleaned}`,
-      fieldsCount: 2,
-      extraFields: {
-        "Platform": "Pinterest Visual Discovery",
-        "Status": "Registered Member",
-        "Avatar": primaryAvatar
-      },
-      detail: `Registered member on Pinterest network.`,
-      icon: "pinterest.com"
-    }
-  ];
-
-  for (const sp of standardPlatforms) {
-    if (!platforms.some(p => p.name === sp.name)) {
-      platforms.push(sp);
-    }
-  }
-
-  // Ensure Gravatar card is present if not already added
-  if (!platforms.some(p => p.name === "GRAVATAR")) {
-    platforms.push({
-      name: "GRAVATAR",
-      category: "Avatar & Bio Identity",
-      url: `https://gravatar.com/${sha256Hex}`,
-      status: "candidate",
-      verified: true,
-      identifierDisplay: `Email: ${cleaned}`,
-      fieldsCount: 2,
-      extraFields: {
-        "Avatar Status": "Stylized Initial Monogram Profile Picture",
-        "Avatar": primaryAvatar,
-        "Hash": sha256Hex.slice(0, 16) + "..."
-      },
-      detail: `Globally recognized avatar profile registered for ${cleaned}.`,
-      icon: "gravatar.com"
-    });
-  }
-
-  // Ensure Duolingo is present if not already added
-  if (!platforms.some(p => p.name === "DUOLINGO")) {
-    platforms.push({
-      name: "DUOLINGO",
-      category: "Learning",
-      url: "https://www.duolingo.com",
-      status: "candidate",
-      verified: true,
-      identifierDisplay: `Email: ${cleaned}`,
-      fieldsCount: 2,
-      extraFields: {
-        "Platform": "Duolingo Language Network",
-        "Account Status": "Registered Learner",
-        "Avatar": primaryAvatar
-      },
-      detail: `Confirmed learner account on Duolingo platform for ${cleaned}.`,
-      icon: "duolingo.com"
-    });
-  }
-
-  // Ensure Twitter is present if not already added
-  if (!platforms.some(p => p.name === "TWITTER / X")) {
-    platforms.push({
-      name: "TWITTER / X",
-      category: "Social Media",
-      url: "https://x.com",
-      status: "candidate",
-      verified: true,
-      identifierDisplay: `Email: ${cleaned}`,
-      fieldsCount: 2,
-      extraFields: {
-        "Platform": "X (Twitter) Network",
-        "Registration": "Active Account",
-        "Avatar": primaryAvatar
-      },
-      detail: `Account registered on X (Twitter) network.`,
-      icon: "x.com"
-    });
-  }
-
-  // Ensure Spotify is present if not already added
-  if (!platforms.some(p => p.name === "SPOTIFY")) {
-    platforms.push({
-      name: "SPOTIFY",
-      category: "Music & Audio",
-      url: "https://spotify.com",
-      status: "candidate",
-      verified: true,
-      identifierDisplay: `Email: ${cleaned}`,
-      fieldsCount: 2,
-      extraFields: {
-        "Platform": "Spotify Audio Network",
-        "Registration": "Active Account",
-        "Avatar": primaryAvatar
-      },
-      detail: `Registered account on Spotify streaming service.`,
-      icon: "spotify.com"
-    });
-  }
-
-  // Ensure Microsoft Live is present if not already added
-  if (!platforms.some(p => p.name === "MICROSOFT LIVE")) {
-    platforms.push({
-      name: "MICROSOFT LIVE",
-      category: "Enterprise & Productivity",
-      url: "https://account.microsoft.com",
-      status: "candidate",
-      verified: true,
-      identifierDisplay: `Email: ${cleaned}`,
-      fieldsCount: 2,
-      extraFields: {
-        "Ecosystem": "Microsoft Account Network",
-        "Status": "Registered Identity",
-        "Avatar": primaryAvatar
-      },
-      detail: `Associated Microsoft identity for ${cleaned}.`,
-      icon: "microsoft.com"
-    });
-  }
+    detail: `Public breach corpus index links for ${cleaned} across HaveIBeenPwned and DeHashed.`,
+    icon: "haveibeenpwned.com"
+  });
 
   return {
     email: cleaned,

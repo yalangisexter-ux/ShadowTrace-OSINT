@@ -119,6 +119,35 @@ function expandIPv6(ip: string): string {
   return full.join(":");
 }
 
+interface ShodanInternetDBResult {
+  ip?: string;
+  ports?: number[];
+  hostnames?: string[];
+  cpes?: string[];
+  tags?: string[];
+  vulns?: string[];
+}
+
+/**
+ * Shodan InternetDB Query (Free, zero-key public API from Shodan)
+ * Exposes live open ports, hostnames, CPEs, and CVE vulnerabilities
+ */
+async function queryShodanInternetDB(ip: string): Promise<ShodanInternetDBResult | null> {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 3500);
+    const res = await fetch(`https://internetdb.shodan.io/${encodeURIComponent(ip)}`, {
+      headers: { "User-Agent": "ShadowTrace-OSINT/1.0" },
+      signal: controller.signal
+    });
+    clearTimeout(timer);
+    if (!res.ok) return null;
+    return await res.json() as ShodanInternetDBResult;
+  } catch {
+    return null;
+  }
+}
+
 export async function analyzeIP(input: string): Promise<IPResult> {
   const ip = input.trim();
   const isV4 = ip.includes(".");
@@ -139,8 +168,8 @@ export async function analyzeIP(input: string): Promise<IPResult> {
   let cloudProvider: string | undefined = undefined;
   let flagUrl: string | undefined = undefined;
 
-  // Run live network queries concurrently
-  const [geoRes, hostname] = await Promise.all([
+  // Run live network queries concurrently: Geolocation, PTR DNS, and Shodan InternetDB
+  const [geoRes, rawHostname, shodanRes] = await Promise.all([
     !isBogon ? (async () => {
       try {
         const controller = new AbortController();
@@ -156,8 +185,11 @@ export async function analyzeIP(input: string): Promise<IPResult> {
         return null;
       }
     })() : Promise.resolve(null),
-    queryReverseDns(ip)
+    queryReverseDns(ip),
+    !isBogon ? queryShodanInternetDB(ip) : Promise.resolve(null)
   ]);
+
+  const hostname = rawHostname || (shodanRes?.hostnames && shodanRes.hostnames.length > 0 ? shodanRes.hostnames[0] : null);
 
   if (geoRes && geoRes.success) {
     country = geoRes.country || country;
@@ -190,7 +222,7 @@ export async function analyzeIP(input: string): Promise<IPResult> {
 
   const entities: IPResult["entities"] = {
     names: [hostname || ip, asnOrg || isp || `${country} Network`].filter(Boolean) as string[],
-    profile_pictures: flagUrl ? [flagUrl] : [],
+    profile_pictures: [], // IP addresses have no personal profile pictures (flags are not avatars)
     banners: [],
     usernames: [],
     emails: [],
@@ -284,30 +316,51 @@ export async function analyzeIP(input: string): Promise<IPResult> {
     });
   }
 
-  // 5. Threat & Attack Surface Pivots
-  platforms.push({
-    name: "SHODAN & THREAT PIVOTS",
-    category: "Attack Surface",
-    url: `https://www.shodan.io/host/${encodeURIComponent(ip)}`,
-    status: "candidate",
-    verified: true,
-    identifierDisplay: `Shodan IP: ${ip}`,
-    fieldsCount: 4,
-    extraFields: {
-      "Shodan Host Pivot": `https://www.shodan.io/host/${encodeURIComponent(ip)}`,
-      "Censys Search": `https://search.censys.io/hosts/${encodeURIComponent(ip)}`,
-      "VirusTotal Analysis": `https://www.virustotal.com/gui/ip-address/${encodeURIComponent(ip)}`,
-      "AbuseIPDB Reports": `https://www.abuseipdb.com/check/${encodeURIComponent(ip)}`
-    },
-    detail: `Threat intelligence, open port scanner, and abuse reputation pivots for ${ip}.`,
-    icon: "shodan.io"
-  });
+  // 5. Live Shodan InternetDB Intelligence & Attack Surface Pivots
+  if (shodanRes && (shodanRes.ports?.length || shodanRes.vulns?.length || shodanRes.hostnames?.length)) {
+    platforms.push({
+      name: "SHODAN INTERNETDB (LIVE PORTS & VULNS)",
+      category: "Attack Surface",
+      url: `https://www.shodan.io/host/${encodeURIComponent(ip)}`,
+      status: "candidate",
+      verified: true,
+      identityName: `Shodan: ${ip}`,
+      identifierDisplay: `Open Ports: ${shodanRes.ports?.length || 0} · CVEs: ${shodanRes.vulns?.length || 0}`,
+      fieldsCount: 4,
+      extraFields: {
+        "Open Ports": shodanRes.ports?.length ? shodanRes.ports.join(", ") : "None detected",
+        "Known Vulnerabilities (CVEs)": shodanRes.vulns?.length ? shodanRes.vulns.join(", ") : "None detected",
+        "Hostnames": shodanRes.hostnames?.length ? shodanRes.hostnames.join(", ") : "None",
+        "Tags": shodanRes.tags?.length ? shodanRes.tags.join(", ") : "None"
+      },
+      detail: `Live Shodan InternetDB intelligence: ${shodanRes.ports?.length || 0} exposed network services, ${shodanRes.vulns?.length || 0} CVEs.`,
+      icon: "shodan.io"
+    });
+  } else {
+    platforms.push({
+      name: "SHODAN & THREAT PIVOTS",
+      category: "Attack Surface",
+      url: `https://www.shodan.io/host/${encodeURIComponent(ip)}`,
+      status: "candidate",
+      verified: true,
+      identifierDisplay: `Shodan IP: ${ip}`,
+      fieldsCount: 4,
+      extraFields: {
+        "Shodan Host Pivot": `https://www.shodan.io/host/${encodeURIComponent(ip)}`,
+        "Censys Search": `https://search.censys.io/hosts/${encodeURIComponent(ip)}`,
+        "VirusTotal Analysis": `https://www.virustotal.com/gui/ip-address/${encodeURIComponent(ip)}`,
+        "AbuseIPDB Reports": `https://www.abuseipdb.com/check/${encodeURIComponent(ip)}`
+      },
+      detail: `Threat intelligence, open port scanner, and abuse reputation pivots for ${ip}.`,
+      icon: "shodan.io"
+    });
+  }
 
   return {
     ip,
     type,
     isBogon,
-    hostname,
+    hostname: hostname || undefined,
     country,
     countryCode,
     region,

@@ -150,71 +150,46 @@ test("provider redirect allowlist rejects cross-brand homepage redirects", () =>
 import { analyzeEmail } from "../src/email.ts";
 import { analyzePhoneNumber } from "../src/phone.ts";
 
-test("email intelligence engine correlates identities, masked phones, and platform profiles", async () => {
+test("email intelligence engine resolves MX records, Gravatar, and breach intelligence", async () => {
   const res = await analyzeEmail("hemarushaharinath.k@gmail.com");
   assert.equal(res.email, "hemarushaharinath.k@gmail.com");
   assert.equal(res.username, "hemarushaharinath.k");
   assert.equal(res.domain, "gmail.com");
   assert.equal(res.isFreeProvider, true);
-  
-  // Entities checks
-  assert.ok(res.entities.names.includes("Hema"));
-  assert.ok(res.entities.names.includes("R..."));
-  assert.ok(res.entities.phones.includes("90XXXXX934"));
-  assert.ok(res.entities.usernames.includes("9da32e84d3610d125b26e166f08dfcf8"));
-  assert.equal(res.entities.profile_pictures.length, 2);
-  assert.equal(res.entities.banners.length, 1);
 
   // Platform profiles count & key platforms
-  assert.ok(res.platforms.length >= 17);
+  assert.ok(res.platforms.length >= 2);
   const platformNames = res.platforms.map(p => p.name);
-  assert.ok(platformNames.includes("UNACADEMY"));
-  assert.ok(platformNames.includes("TYPINGCOM"));
-  assert.ok(platformNames.includes("TESTBOOK"));
-  assert.ok(platformNames.includes("FACEBOOK"));
-  assert.ok(platformNames.includes("QUORA"));
-  assert.ok(platformNames.includes("UPWORK"));
-  assert.ok(platformNames.includes("FREELANCER"));
-  assert.ok(platformNames.includes("HACKERRANK"));
-  assert.ok(platformNames.includes("INSTAGRAM"));
-  assert.ok(platformNames.includes("JAUMO"));
+  assert.ok(platformNames.includes("MAIL EXCHANGE (MX) ROUTING"));
+  assert.ok(platformNames.includes("PUBLIC BREACH AUDIT (HIBP)"));
 });
 
-test("phone intelligence engine resolves telecom circles, caller names, and ed-tech platforms", async () => {
+test("phone intelligence engine resolves telecom circles, carriers, and payment handles", async () => {
   const res = await analyzePhoneNumber("+919010183934");
   assert.equal(res.e164, "+919010183934");
   assert.equal(res.country, "India");
   assert.match(res.carrier, /Airtel/i);
   assert.match(res.region, /Andhra Pradesh & Telangana/i);
 
-  // Entities checks
-  assert.ok(res.entities.names.includes("raja"));
-  assert.ok(res.entities.names.includes("Hema"));
-  assert.ok(res.entities.names.includes("happy12345_star751"));
-  assert.ok(res.entities.usernames.includes("happy12345_star751"));
-  assert.equal(res.entities.profile_pictures.length, 1);
-  assert.ok(res.entities.emails.includes("hemarushaharinath.k@gmail.com"));
-
   // Platform profiles
   const platformNames = res.platforms.map(p => p.name);
-  assert.ok(platformNames.includes("TESTBOOK"));
-  assert.ok(platformNames.includes("CONTACTSPLUS"));
-  assert.ok(platformNames.includes("UNACADEMY"));
-  assert.ok(platformNames.includes("TRUECALLER"));
+  assert.ok(platformNames.includes("TELECOM SUBSCRIBER REGISTRY"));
+  assert.ok(platformNames.includes("TRUECALLER DIRECTORY"));
   assert.ok(platformNames.includes("WHATSAPP"));
   assert.ok(platformNames.includes("TELEGRAM"));
-  assert.ok(platformNames.includes("PAYTM UPI"));
+  assert.ok(platformNames.includes("NPCI UPI PAYMENT VPA HANDLES"));
+  assert.ok(platformNames.includes("PHONEINFOGA OSINT SEARCH DORKS"));
 });
 
 test("universal email intelligence performs live recon for arbitrary email", async () => {
   const res = await analyzeEmail("octocat@github.com");
   assert.equal(res.email, "octocat@github.com");
   assert.equal(res.domain, "github.com");
-  assert.ok(res.entities.profile_pictures.length >= 1);
-  assert.ok(res.entities.phones.length >= 1);
-  assert.ok(res.platforms.length >= 10);
+  assert.equal(res.isFreeProvider, false);
+  assert.ok(res.platforms.length >= 2);
   const platformNames = res.platforms.map(p => p.name);
-  assert.ok(platformNames.includes("GITHUB"));
+  assert.ok(platformNames.includes("MAIL EXCHANGE (MX) ROUTING"));
+  assert.ok(platformNames.includes("PUBLIC BREACH AUDIT (HIBP)"));
 });
 
 test("universal phone intelligence resolves arbitrary phone number dynamically", async () => {
@@ -223,14 +198,11 @@ test("universal phone intelligence resolves arbitrary phone number dynamically",
   assert.equal(res.country, "India");
   assert.match(res.carrier, /Airtel/i);
   assert.match(res.region, /Andhra Pradesh/i);
-  assert.ok(res.entities.names.length >= 1);
-  assert.ok(res.entities.profile_pictures.length >= 1);
-  assert.ok(res.entities.emails.length >= 1);
   const platformNames = res.platforms.map(p => p.name);
   assert.ok(platformNames.includes("WHATSAPP"));
   assert.ok(platformNames.includes("TELEGRAM"));
-  assert.ok(platformNames.includes("PAYTM UPI"));
-  assert.ok(platformNames.includes("GOOGLE PAY"));
+  assert.ok(platformNames.includes("NPCI UPI PAYMENT VPA HANDLES"));
+  assert.ok(platformNames.includes("PHONEINFOGA OSINT SEARCH DORKS"));
 });
 
 import { analyzeIP } from "../src/ip.ts";

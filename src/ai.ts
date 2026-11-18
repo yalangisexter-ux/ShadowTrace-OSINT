@@ -107,8 +107,8 @@ export function generateAISummary(
   if (candidates.some(c => c.provider === "PAYTM UPI" || c.provider === "GOOGLE PAY" || c.provider === "PHONEPE")) {
     anomalyFlags.push("Active mobile payment handles (UPI / NPCI) resolved on Indian telecom network");
   }
-  if (entities.profile_pictures && entities.profile_pictures.length > 0) {
-    anomalyFlags.push(`High-resolution biometric profile picture / avatar recovered across public profiles`);
+  if ((searchType === "username" || searchType === "email") && entities.profile_pictures && entities.profile_pictures.length > 0) {
+    anomalyFlags.push(`Public profile avatar / biometric visual recovered: ${entities.profile_pictures.length} image(s) indexed`);
   }
 
   // 3. Key Findings Bullet Points
@@ -125,35 +125,37 @@ export function generateAISummary(
 
   // 4. Chronological Timeline Reconstruction
   const timeline: AISummaryResult["timeline"] = [];
-  const firstSeenDate = entities.first_seen || "Apr 22, 2019";
+  const firstSeenDate = entities.first_seen || "Initial Footprint";
   const lastSeenDate = entities.last_seen || new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 
   timeline.push({
     date: firstSeenDate,
     title: "Initial Digital Footprint Recorded",
-    description: `Target first indexed on public directory registries or telecom circle allocations.`,
-    source: "Directory / Telecom Registry",
+    description: `Target first recorded on public registry, directory, or network allocation.`,
+    source: "Directory / Telecom / Network Registry",
     category: "Historical Sightings",
   });
 
-  // Intermediate platform events
-  if (candidates.some(c => c.provider === "GITHUB")) {
+  // Intermediate platform events (derived dynamically from live candidates)
+  const ghCandidate = candidates.find(c => c.provider === "GITHUB" || c.provider === "GITHUB COMMITS");
+  if (ghCandidate) {
     timeline.push({
-      date: "Oct 12, 2021",
-      title: "Public Code Contributions & Author Commit",
-      description: `Commit author verified with public email signature and repository activity.`,
+      date: ghCandidate.extra_fields?.["Commit Date"] || "Verified Activity",
+      title: "Public Code Contributions & Author Signature",
+      description: `Commit author verified with public signature and repository activity on GitHub.`,
       source: "GitHub Public Git VCS",
       category: "Developer Activity",
     });
   }
 
-  if (candidates.some(c => c.provider === "UNACADEMY" || c.provider === "TESTBOOK")) {
+  const pgpCandidate = candidates.find(c => c.provider === "OPENPGP KEYSERVER");
+  if (pgpCandidate) {
     timeline.push({
-      date: "Aug 15, 2023",
-      title: "Ed-Tech & Professional Exam Prep Verification",
-      description: `Student account registration verified with mobile OTP and active course subscriber state.`,
-      source: "Ed-Tech Learning Graph",
-      category: "Identity Verification",
+      date: pgpCandidate.extra_fields?.["Key Creation"] || "PGP Registry",
+      title: "Cryptographic OpenPGP Key Registration",
+      description: `Target published public cryptographic key to Ubuntu/SKS OpenPGP keyserver network.`,
+      source: "OpenPGP Keyserver Network",
+      category: "Cryptographic Identity",
     });
   }
 
