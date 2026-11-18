@@ -57,10 +57,6 @@ export function detectCryptoAddress(address: string): {
     blockchain: "Tron", format: "Tron Base58 address pattern (checksum not validated)", isValid: true,
     explorerUrl: `https://tronscan.org/#/address/${clean}`,
   };
-  if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(clean)) return {
-    blockchain: "Solana", format: "Solana Base58 address pattern (curve validation not performed)", isValid: true,
-    explorerUrl: `https://solscan.io/account/${clean}`,
-  };
   if (/^(?:[LM3][a-km-zA-HJ-NP-Z1-9]{26,33}|ltc1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{39,59})$/i.test(clean)) return {
     blockchain: "Litecoin", format: "Litecoin address pattern (checksum not validated)", isValid: true,
     explorerUrl: `https://blockchair.com/litecoin/address/${clean}`,
@@ -69,6 +65,11 @@ export function detectCryptoAddress(address: string): {
     blockchain: "Dogecoin", format: "Dogecoin address pattern (checksum not validated)", isValid: true,
     explorerUrl: `https://dogechain.info/address/${clean}`,
   };
+  if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(clean)) return {
+    blockchain: "Solana", format: "Solana Base58 address pattern (curve validation not performed)", isValid: true,
+    explorerUrl: `https://solscan.io/account/${clean}`,
+  };
+
   return {
     blockchain: "Unknown", format: "Unrecognized address format", isValid: false,
     explorerUrl: `https://www.blockchain.com/explorer/search?search=${encodeURIComponent(clean)}`,
