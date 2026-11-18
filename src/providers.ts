@@ -708,7 +708,6 @@ export async function checkProvider(
         state = "inconclusive";
         detail = `Chess.com API responded HTTP ${status}.`;
       }
-    }
     } else if (provider.type === "api_lichess") {
       if (status === 200) {
         const d: any = await response.json();
@@ -735,7 +734,6 @@ export async function checkProvider(
         state = "inconclusive";
         detail = `Lichess responded HTTP ${status}.`;
       }
-    }
     } else if (provider.type === "api_docker") {
       if (status === 200) {
         const d: any = await response.json();
@@ -762,7 +760,6 @@ export async function checkProvider(
         state = "inconclusive";
         detail = `Docker Hub API responded HTTP ${status}.`;
       }
-    }
     } else if (provider.type === "api_hn") {
       if (status === 200) {
         const text = await response.text();
@@ -795,7 +792,6 @@ export async function checkProvider(
         state = "inconclusive";
         detail = `Hacker News responded HTTP ${status}.`;
       }
-    }
     } else if (provider.type === "api_keybase") {
       if (status === 200) {
         const d: any = await response.json();
@@ -824,7 +820,6 @@ export async function checkProvider(
         state = "inconclusive";
         detail = `Keybase API responded HTTP ${status}.`;
       }
-    }
     } else if (provider.type === "api_artstation") {
       if (status === 200) {
         const payload: any = await response.json().catch(() => null);
@@ -850,7 +845,6 @@ export async function checkProvider(
         state = "inconclusive";
         detail = `ArtStation API responded HTTP ${status}.`;
       }
-    }
     } else if (provider.type === "api_glitch") {
       if (status === 200) {
         const d: any = await response.json();
@@ -877,7 +871,6 @@ export async function checkProvider(
         state = "inconclusive";
         detail = `Glitch API responded HTTP ${status}.`;
       }
-    }
     } else if (provider.type === "api_reddit") {
       if (status === 200) {
         const d: any = await response.json();
