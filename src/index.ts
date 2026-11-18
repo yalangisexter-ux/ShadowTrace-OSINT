@@ -242,8 +242,8 @@ app.get("/api/v1/plugins", async (c) => {
     total: plugins.length,
     plugins: plugins.map(p => ({
       ...p,
-      status: health[p.id]?.ok ? "active" : "degraded",
-      health: health[p.id] || { ok: true },
+      status: "registered",
+      health: { ok: health[p.id]?.ok ?? false, message: "Collector registration is not a live upstream provider health check; availability is evaluated during collection." },
     })),
   });
 });
