@@ -1,9 +1,10 @@
 import asyncio
 import ipaddress
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import dns.asyncresolver
+import dns.exception
 import httpx
 
 from app.core.contracts import Observation
@@ -53,7 +54,7 @@ class DomainCollector:
                 )
                 for record in answer
             ]
-        except Exception:
+        except (dns.exception.DNSException, OSError, TimeoutError):
             return []
 
     async def _certificate_transparency(self, domain: str) -> list[Observation]:
@@ -107,7 +108,7 @@ class DomainCollector:
                 relation="investigated_target",
                 source="user_input",
                 confidence=1.0,
-                observed_at=datetime.now(timezone.utc),
+                observed_at=datetime.now(UTC),
             )
         )
         return observations
