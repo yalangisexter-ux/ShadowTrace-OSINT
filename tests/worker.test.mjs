@@ -389,3 +389,23 @@ test("reports distinguish candidate leads from technical observations", () => {
   assert.ok(html.includes("Source-backed Technical Observations"));
   assert.ok(html.includes("Not independently certified"));
 });
+
+test("generic profile markers without exact username metadata are not a match", () => {
+  const html = '<html><head><title>Welcome to the platform</title><meta property="og:description" content="Followers, posts, profiles and community members"></head><body>followers posts profile</body></html>';
+  const signals = extractProfileSignals(html, "fixture-handle", "https://profiles.example.test/fixture-handle");
+  assert.equal(signals.titleMentionsUsername, false);
+});
+
+test("knowledge graph labels email and phone values as indicators, not recovery channels", () => {
+  const graph = buildKnowledgeGraph("fixture-subject", "username", {
+    names: [],
+    emails: ["alias@example.test"],
+    phones: ["+12025550123"],
+    usernames: []
+  }, []);
+  const relationships = graph.edges.map(edge => edge.relationship);
+  assert.ok(relationships.includes("email_indicator"));
+  assert.ok(relationships.includes("phone_indicator"));
+  assert.equal(relationships.includes("recovery_email"), false);
+  assert.equal(relationships.includes("recovery_phone"), false);
+});
