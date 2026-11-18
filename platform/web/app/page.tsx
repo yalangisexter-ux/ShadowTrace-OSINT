@@ -84,11 +84,11 @@ export default function Home() {
 
           <div className="mb-7 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             {[
-              ["Active investigations","0","No active cases",BriefcaseBusiness],
-              ["Evidence collected","0","Awaiting first collection",Database],
-              ["Collectors available","1","Passive domain collector",Boxes],
-              ["Background jobs","0","Queue not enabled yet",Clock3]
-            ].map(([label,value,note,Icon]) => <div key={String(label)} className="rounded-2xl border border-line bg-[#111722]/80 p-5"><div className="flex items-center justify-between text-xs text-slate-500"><span>{String(label)}</span><Icon size={16}/></div><div className="mt-4 text-3xl font-semibold tracking-tight">{String(value)}</div><div className="mt-1 text-xs text-slate-600">{String(note)}</div></div>)}
+              ["Active investigations","0","No active cases"],
+              ["Evidence collected","0","Awaiting first collection"],
+              ["Collectors available","1","Passive domain collector"],
+              ["Background jobs","0","Queue not enabled yet"]
+            ].map(([label,value,note]) => <div key={label} className="rounded-2xl border border-line bg-[#111722]/80 p-5"><div className="flex items-center justify-between text-xs text-slate-500"><span>{label}</span><Activity size={16}/></div><div className="mt-4 text-3xl font-semibold tracking-tight">{value}</div><div className="mt-1 text-xs text-slate-600">{note}</div></div>)}
           </div>
 
           <div className="mb-7 grid gap-5 xl:grid-cols-[1.5fr_1fr]">
