@@ -149,195 +149,243 @@ test("provider redirect allowlist rejects cross-brand homepage redirects", () =>
 
 import { analyzeEmail } from "../src/email.ts";
 import { analyzePhoneNumber } from "../src/phone.ts";
-
-test("email intelligence engine resolves MX records, Gravatar, and breach intelligence", async () => {
-  const res = await analyzeEmail("hemarushaharinath.k@gmail.com");
-  assert.equal(res.email, "hemarushaharinath.k@gmail.com");
-  assert.equal(res.username, "hemarushaharinath.k");
-  assert.equal(res.domain, "gmail.com");
-  assert.equal(res.isFreeProvider, true);
-
-  // Platform profiles count & key platforms
-  assert.ok(res.platforms.length >= 2);
-  const platformNames = res.platforms.map(p => p.name);
-  assert.ok(platformNames.includes("MAIL EXCHANGE (MX) ROUTING"));
-  assert.ok(platformNames.includes("PUBLIC BREACH AUDIT (HIBP)"));
-});
-
-test("phone intelligence engine resolves telecom circles, carriers, and payment handles", async () => {
-  const res = await analyzePhoneNumber("+919010183934");
-  assert.equal(res.e164, "+919010183934");
-  assert.equal(res.country, "India");
-  assert.match(res.carrier, /Airtel/i);
-  assert.match(res.region, /Andhra Pradesh & Telangana/i);
-
-  // Platform profiles
-  const platformNames = res.platforms.map(p => p.name);
-  assert.ok(platformNames.includes("TELECOM SUBSCRIBER REGISTRY"));
-  assert.ok(platformNames.includes("TRUECALLER DIRECTORY"));
-  assert.ok(platformNames.includes("WHATSAPP"));
-  assert.ok(platformNames.includes("TELEGRAM"));
-  assert.ok(platformNames.includes("NPCI UPI PAYMENT VPA HANDLES"));
-  assert.ok(platformNames.includes("PHONEINFOGA OSINT SEARCH DORKS"));
-});
-
-test("universal email intelligence performs live recon for arbitrary email", async () => {
-  const res = await analyzeEmail("octocat@github.com");
-  assert.equal(res.email, "octocat@github.com");
-  assert.equal(res.domain, "github.com");
-  assert.equal(res.isFreeProvider, false);
-  assert.ok(res.platforms.length >= 2);
-  const platformNames = res.platforms.map(p => p.name);
-  assert.ok(platformNames.includes("MAIL EXCHANGE (MX) ROUTING"));
-  assert.ok(platformNames.includes("PUBLIC BREACH AUDIT (HIBP)"));
-});
-
-test("universal phone intelligence resolves arbitrary phone number dynamically", async () => {
-  const res = await analyzePhoneNumber("+919848012345");
-  assert.equal(res.e164, "+919848012345");
-  assert.equal(res.country, "India");
-  assert.match(res.carrier, /Airtel/i);
-  assert.match(res.region, /Andhra Pradesh/i);
-  const platformNames = res.platforms.map(p => p.name);
-  assert.ok(platformNames.includes("WHATSAPP"));
-  assert.ok(platformNames.includes("TELEGRAM"));
-  assert.ok(platformNames.includes("NPCI UPI PAYMENT VPA HANDLES"));
-  assert.ok(platformNames.includes("PHONEINFOGA OSINT SEARCH DORKS"));
-});
-
 import { analyzeIP } from "../src/ip.ts";
-import { analyzeCrypto, detectCryptoAddress } from "../src/crypto.ts";
+import { analyzeDomain } from "../src/domain.ts";
+import { analyzeMetadata } from "../src/metadata.ts";
+import { detectCryptoAddress } from "../src/crypto.ts";
 import { collectorManager } from "../src/collector.ts";
-
-test("ip intelligence resolves geolocation, asn, and cloud provider", async () => {
-  const res = await analyzeIP("1.1.1.1");
-  assert.equal(res.ip, "1.1.1.1");
-  assert.equal(res.type, "IPv4");
-  assert.equal(res.isBogon, false);
-  assert.ok(res.platforms.length >= 3);
-  const platNames = res.platforms.map(p => p.name);
-  assert.ok(platNames.includes("IP GEOLOCATION"));
-});
-
-test("crypto intelligence validates bitcoin and ethereum addresses", async () => {
-  const btcDet = detectCryptoAddress("1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa");
-  assert.equal(btcDet.blockchain, "Bitcoin");
-  assert.equal(btcDet.isValid, true);
-
-  const ethDet = detectCryptoAddress("0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045");
-  assert.equal(ethDet.blockchain, "Ethereum");
-  assert.equal(ethDet.isValid, true);
-
-  const res = await analyzeCrypto("1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa");
-  assert.equal(res.blockchain, "Bitcoin");
-  assert.ok(res.platforms.length >= 2);
-});
-
-test("collector manager lists all registered modular plugins", () => {
-  const plugins = collectorManager.listPlugins();
-  assert.ok(plugins.length >= 7);
-  const pluginIds = plugins.map(p => p.id);
-  assert.ok(pluginIds.includes("collector-domain"));
-  assert.ok(pluginIds.includes("collector-ip"));
-  assert.ok(pluginIds.includes("collector-email"));
-  assert.ok(pluginIds.includes("collector-phone"));
-  assert.ok(pluginIds.includes("collector-username"));
-  assert.ok(pluginIds.includes("collector-crypto"));
-  assert.ok(pluginIds.includes("collector-metadata"));
-});
-
 import { buildKnowledgeGraph } from "../src/graph.ts";
 import { generateAISummary } from "../src/ai.ts";
 import { generateMarkdownReport, generateCSVReport, generateHTMLReport } from "../src/report.ts";
 
-test("knowledge graph builds typed nodes and typed relationship edges", () => {
-  const entities = {
-    names: ["Linus Torvalds"],
-    emails: ["torvalds@linux-foundation.org"],
-    usernames: ["torvalds"]
-  };
-  const evidence = [
-    {
-      provider: "GitHub",
-      category: "identity",
-      profile_url: "https://github.com/torvalds",
-      status: "candidate",
-      identity_name: "Linus Torvalds",
-      identifier_display: "torvalds",
-      confidence: "high"
+test("email intelligence distinguishes source observations from account candidates", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input, init = {}) => {
+    const url = String(input);
+    if (url.includes("cloudflare-dns.com/dns-query")) {
+      return new Response(JSON.stringify({ Answer: [{ data: "10 mx.example.test." }] }), { status: 200 });
     }
-  ];
-
-  const graph = buildKnowledgeGraph("torvalds", "username", entities, evidence);
-  assert.ok(graph.nodes.length >= 3);
-  assert.ok(graph.edges.length >= 2);
-  const types = graph.nodes.map(n => n.type);
-  assert.ok(types.includes("target"));
-  assert.ok(types.includes("platform"));
-  assert.ok(types.includes("email"));
+    if (url.includes("keyserver.ubuntu.com")) {
+      return new Response('<span class="uid">Fixture Analyst <fixture-alias@example.test></span>', { status: 200 });
+    }
+    if (url.includes("en.gravatar.com")) {
+      return new Response(JSON.stringify({ entry: [] }), { status: 200 });
+    }
+    if (url.includes("gravatar.com/avatar/")) return new Response("", { status: 404 });
+    if (url.includes("api.github.com/search/commits")) {
+      return new Response(JSON.stringify({
+        items: [{
+          commit: { author: { name: "Fixture Commit Author", email: "fixture@example.test", date: "2024-01-02T03:04:05Z" } },
+          author: { login: "fixture-author", avatar_url: "https://avatars.githubusercontent.com/u/1" },
+          html_url: "https://github.com/fixture/repo/commit/abc123"
+        }]
+      }), { status: 200 });
+    }
+    throw new Error("Unexpected provider request: " + url);
+  };
+  try {
+    const result = await analyzeEmail("fixture@example.test");
+    assert.equal(result.email, "fixture@example.test");
+    assert.equal(result.domain, "example.test");
+    assert.equal(result.platforms.find(p => p.name === "DOMAIN MAIL ROUTING (MX)")?.status, "observed");
+    assert.equal(result.platforms.find(p => p.name === "GITHUB PUBLIC COMMITS")?.status, "candidate");
+    assert.equal(result.platforms.some(p => p.name.includes("HIBP") || p.name === "TWITTER / X"), false);
+    assert.deepEqual(result.entities.phones, []);
+    assert.ok(result.entities.emails.includes("fixture-alias@example.test"));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
-test("ai summary generates executive briefing, threat score, and pivots", () => {
-  const entities = {
-    names: ["Linus Torvalds"],
-    emails: ["torvalds@linux-foundation.org"]
-  };
-  const evidence = [
-    {
-      provider: "GitHub",
-      category: "identity",
-      profile_url: "https://github.com/torvalds",
-      status: "candidate",
-      confidence: "high"
-    }
-  ];
-  const threatMatrix = {
-    overall_threat_score: 25,
-    risk_level: "low",
-    level: "LOW"
-  };
-
-  const ai = generateAISummary("torvalds", "username", entities, evidence, threatMatrix);
-  assert.ok(ai.executive_summary.length > 20);
-  assert.equal(typeof ai.threat_radar.score, "number");
-  assert.ok(ai.recommended_pivots.length >= 1);
-  assert.ok(ai.timeline.length >= 1);
+test("phone parsing does not invent carrier, region, messaging accounts, or UPI handles", async () => {
+  const result = await analyzePhoneNumber("+12025550123");
+  assert.equal(result.e164, "+12025550123");
+  assert.equal(result.country, "United States / Canada");
+  assert.match(result.carrier, /Unknown/);
+  assert.match(result.region, /not a reliable current location/i);
+  assert.deepEqual(result.platforms, []);
+  assert.deepEqual(result.entities.names, []);
+  assert.equal(result.entities.first_seen, undefined);
 });
 
-test("report generator exports markdown, csv, and standalone html", () => {
+test("metadata extraction reports only supplied content and embedded text", async () => {
+  const result = await analyzeMetadata("data:text/plain,fixture%40example.test%20https%3A%2F%2Fexample.test");
+  assert.equal(result.kind, "raw");
+  assert.equal(result.sha256?.length, 64);
+  assert.ok(result.embedded.emails.includes("fixture@example.test"));
+  assert.ok(result.embedded.urls.includes("https://example.test"));
+  assert.equal("exif" in result, false);
+  assert.equal("document" in result, false);
+  assert.equal(result.entities.names.length, 0);
+});
+
+test("IP intelligence marks provider-returned facts as observations and private ranges skip network calls", async () => {
+  const originalFetch = globalThis.fetch;
+  let requests = 0;
+  globalThis.fetch = async input => {
+    requests++;
+    const url = String(input);
+    if (url.startsWith("https://ipwho.is/")) {
+      return new Response(JSON.stringify({
+        success: true, ip: "1.1.1.1", country: "Australia", country_code: "AU",
+        region: "Queensland", city: "South Brisbane", latitude: -27.48, longitude: 153.02,
+        timezone: { id: "Australia/Brisbane" },
+        connection: { asn: 13335, org: "Cloudflare, Inc.", isp: "Cloudflare" }
+      }), { status: 200 });
+    }
+    if (url.startsWith("https://dns.google/resolve")) {
+      return new Response(JSON.stringify({ Answer: [{ data: "one.one.one.one." }] }), { status: 200 });
+    }
+    if (url.startsWith("https://internetdb.shodan.io/")) {
+      return new Response(JSON.stringify({ ip: "1.1.1.1", ports: [80, 443], hostnames: ["one.one.one.one"], vulns: [] }), { status: 200 });
+    }
+    throw new Error("Unexpected provider request: " + url);
+  };
+  try {
+    const result = await analyzeIP("1.1.1.1");
+    assert.equal(result.city, "South Brisbane");
+    assert.ok(result.platforms.some(p => p.name === "SHODAN INTERNETDB" && p.status === "observed"));
+    assert.ok(result.platforms.every(p => p.status !== "candidate"));
+    const before = requests;
+    const privateResult = await analyzeIP("192.168.1.10");
+    assert.equal(requests, before);
+    assert.equal(privateResult.platforms[0].status, "observed");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("domain intelligence includes only live DNS, CT, and RDAP responses", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async input => {
+    const url = new URL(String(input));
+    if (url.hostname === "cloudflare-dns.com") {
+      const type = url.searchParams.get("type");
+      const name = url.searchParams.get("name");
+      const answers = type === "A" ? [{ data: "203.0.113.10" }]
+        : type === "MX" ? [{ data: "10 mail.example.com." }]
+        : type === "NS" ? [{ data: "ns1.cloudflare.com." }]
+        : type === "TXT" ? (name?.startsWith("_dmarc.") ? [{ data: '"v=DMARC1; p=reject"' }] : [{ data: '"v=spf1 -all"' }])
+        : [];
+      return new Response(JSON.stringify({ Answer: answers }), { status: 200 });
+    }
+    if (url.hostname === "crt.sh") {
+      return new Response(JSON.stringify([{ name_value: "www.example.com\nmail.example.com" }]), { status: 200 });
+    }
+    if (url.hostname === "rdap.org") {
+      return new Response(JSON.stringify({
+        ldhName: "example.com",
+        events: [{ eventAction: "registration", eventDate: "2020-01-01T00:00:00Z" }],
+        nameservers: [{ ldhName: "ns1.cloudflare.com" }]
+      }), { status: 200 });
+    }
+    throw new Error("Unexpected provider request: " + url.href);
+  };
+  try {
+    const result = await analyzeDomain("example.com");
+    assert.deepEqual(result.ipAddresses, ["203.0.113.10"]);
+    assert.equal(result.hasSpf, true);
+    assert.equal(result.hasDmarc, true);
+    assert.equal(result.registeredAt, "2020-01-01T00:00:00Z");
+    assert.ok(result.evidence.some(e => e.provider.includes("Certificate Transparency") && e.status === "observed"));
+    assert.ok(result.evidence.every(e => e.status !== "candidate"));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("crypto address detection describes syntax recognition, not ownership", () => {
+  const bitcoin = detectCryptoAddress("1BoatSLRHtKNngkdXEeobR76b53LETtpyT");
+  assert.equal(bitcoin.blockchain, "Bitcoin");
+  assert.equal(bitcoin.isValid, true);
+  assert.match(bitcoin.format, /checksum not validated/i);
+  const unknown = detectCryptoAddress("not-a-wallet");
+  assert.equal(unknown.isValid, false);
+});
+
+test("collector manager lists modular plugins without implying provider health", () => {
+  const plugins = collectorManager.listPlugins();
+  assert.ok(plugins.length >= 7);
+  const ids = plugins.map(p => p.id);
+  for (const id of ["collector-domain", "collector-ip", "collector-email", "collector-phone", "collector-username", "collector-crypto", "collector-metadata"]) {
+    assert.ok(ids.includes(id));
+  }
+});
+
+test("knowledge graph keeps target and candidate evidence typed", () => {
+  const graph = buildKnowledgeGraph("fixture-handle", "username", {
+    names: [], emails: ["fixture@example.test"], usernames: ["fixture-handle"]
+  }, [{
+    provider: "Fixture GitHub",
+    category: "identity",
+    profile_url: "https://github.com/fixture-handle",
+    status: "candidate",
+    identifier_display: "@fixture-handle",
+    confidence: "medium"
+  }]);
+  assert.ok(graph.nodes.some(n => n.type === "target"));
+  assert.ok(graph.nodes.some(n => n.type === "platform"));
+  assert.ok(graph.nodes.some(n => n.type === "email"));
+});
+
+test("AI summary never fabricates historical events or identity attribution", () => {
+  const ai = generateAISummary("fixture-handle", "username", {
+    names: [], emails: ["fixture@example.test"]
+  }, [{
+    provider: "Fixture GitHub",
+    category: "identity",
+    status: "candidate",
+    confidence: "medium"
+  }], {
+    overall_threat_score: 0,
+    risk_level: "unassessed",
+    level: "UNKNOWN"
+  });
+  assert.equal(ai.threatLevel, "UNKNOWN");
+  assert.equal(ai.threatScore, 0);
+  assert.equal(ai.timeline.length, 0);
+  assert.match(ai.executiveSummary, /No person or account ownership is established/i);
+  assert.equal(ai.executiveSummary.includes("Primary Identity Attribution"), false);
+});
+
+test("reports distinguish candidate leads from technical observations", () => {
   const reportData = {
     id: 999,
     queryType: "username",
-    queryValue: "torvalds",
+    queryValue: "fixture-handle",
     createdAt: new Date().toISOString(),
-    entities: { names: ["Linus Torvalds"], emails: ["torvalds@linux-foundation.org"] },
-    summary: { total: 1, candidates: 1, providers: 1 },
-    threatMatrix: { overall_threat_score: 20, risk_level: "low" },
+    entities: { names: [], emails: ["fixture@example.test"] },
+    summary: { total: 2, candidates: 1, providers: 2 },
+    threatMatrix: { overall_threat_score: 0, risk_level: "unassessed" },
     evidence: [
       {
-        provider: "GitHub",
+        provider: "Fixture GitHub",
         category: "identity",
-        profile_url: "https://github.com/torvalds",
+        profile_url: "https://github.com/fixture-handle",
         status: "candidate",
-        identity_name: "Linus Torvalds",
-        identifier_display: "torvalds",
-        confidence: "high",
+        identifier_display: "@fixture-handle",
+        confidence: "medium",
+        checked_at: new Date().toISOString()
+      },
+      {
+        provider: "Fixture DNS",
+        category: "domain",
+        profile_url: "https://example.test",
+        status: "observed",
+        detail: "A record returned by test fixture",
         checked_at: new Date().toISOString()
       }
-    ]
+    ],
+    ai: { executiveSummary: "Fixture evidence summary.", timeline: [], recommendedPivots: [] }
   };
-
-  const md = generateMarkdownReport(reportData);
-  assert.ok(md.includes("# ShadowTrace OSINT Intelligence Report"));
-  assert.ok(md.includes("Linus Torvalds"));
-
+  const markdown = generateMarkdownReport(reportData);
+  assert.ok(markdown.includes("Technical Observations"));
+  assert.ok(markdown.includes("Fixture DNS"));
+  assert.ok(markdown.includes("Unassessed"));
+  assert.equal(markdown.includes("Certified deterministic intelligence snapshot"), false);
   const csv = generateCSVReport(reportData);
-  assert.ok(csv.includes("Provider,Category,Status"));
-  assert.ok(csv.includes('"GitHub"'));
-
+  assert.ok(csv.includes('"observed"'));
   const html = generateHTMLReport(reportData);
-  assert.ok(html.includes("<!DOCTYPE html>"));
-  assert.ok(html.includes("ShadowTrace"));
-  assert.ok(html.includes("Linus Torvalds"));
+  assert.ok(html.includes("Source-backed Technical Observations"));
+  assert.ok(html.includes("Not independently certified"));
 });
-
