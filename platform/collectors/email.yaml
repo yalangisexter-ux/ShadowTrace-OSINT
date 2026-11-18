@@ -1,0 +1,16 @@
+name: email.passive
+version: "0.1.0"
+description: Passive MX lookup, domain correlation, and public Gravatar check
+entity_types:
+  - email
+  - domain
+  - dns_record
+  - avatar
+sources:
+  - system_dns_resolver
+  - gravatar.com
+limits:
+  timeout_seconds: 8
+notes:
+  - MX presence does not prove the mailbox exists.
+  - Gravatar is a candidate association only.

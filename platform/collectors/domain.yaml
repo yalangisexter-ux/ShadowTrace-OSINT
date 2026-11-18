@@ -1,16 +1,15 @@
 name: domain.passive
-version: 0.1.0
-category: domain
-entrypoint: app.collectors.domain:DomainCollector
-enabled: true
-execution:
-  mode: async
+version: "0.1.0"
+description: Passive DNS and Certificate Transparency collection
+entity_types:
+  - domain
+  - hostname
+  - dns_record
+sources:
+  - system_dns_resolver
+  - crt.sh
+limits:
   timeout_seconds: 8
-  max_concurrency: 5
-  retries: 1
-  cache_ttl_seconds: 900
-safety:
-  passive_only: true
-  requires_authorized_scope: true
-  allowed_target_types: [domain]
-  prohibited: [port_scanning, brute_force, authenticated_scraping, private_network_targets]
+  max_ct_names: 500
+notes:
+  - Passive only. No port scanning, brute force, or authenticated access.

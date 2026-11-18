@@ -1,0 +1,15 @@
+name: ip.passive
+version: "0.1.0"
+description: Passive GeoIP, ASN, and network registration lookup
+entity_types:
+  - ip
+  - location
+  - asn
+  - organization
+sources:
+  - ipwho.is
+limits:
+  timeout_seconds: 8
+notes:
+  - GeoIP is approximate network location, not precise device location.
+  - Private and reserved addresses are rejected.
