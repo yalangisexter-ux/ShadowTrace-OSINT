@@ -73,10 +73,14 @@ async function queryPgpKeyserver(email: string): Promise<{ names: string[]; altE
     const names = new Set<string>();
     const altEmails = new Set<string>();
     for (const match of body.matchAll(/<span class="uid">([\s\S]*?)<\/span>/gi)) {
-      const raw = match[1].replace(/<[^>]*>/g, "").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&").trim();
-      const emailMatch = raw.match(/<([^<>\s]+@[^<>\s]+)>/);
-      const name = raw.replace(/<[^<>]*>/g, "").trim();
-      if (emailMatch?.[1] && emailMatch[1].toLowerCase() !== email) altEmails.add(emailMatch[1].toLowerCase());
+      const uidHtml = match[1];
+      const emailMatch = uidHtml.match(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i);
+      const name = uidHtml
+        .replace(/<[^>]*>/g, " ")
+        .replace(emailMatch?.[0] || "", " ")
+        .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&")
+        .replace(/\s+/g, " ").trim();
+      if (emailMatch?.[0] && emailMatch[0].toLowerCase() !== email) altEmails.add(emailMatch[0].toLowerCase());
       if (name.length > 1 && !name.includes("@")) names.add(name);
     }
     return { names: Array.from(names), altEmails: Array.from(altEmails), status: res.status };
