@@ -109,7 +109,7 @@ export function buildKnowledgeGraph(
         avatar: entities.profile_pictures?.[idx] || entities.profile_pictures?.[0],
         details: `Name string returned by a source. Its association with the target is not independently verified.`,
         });
-      addEdge(targetId, nameId, "identifies_as", "Identifies As");
+      addEdge(targetId, nameId, "name_indicator", "Name Indicator", "medium");
     });
   }
 
@@ -195,7 +195,6 @@ export function buildKnowledgeGraph(
       category: item.category || "Technical observation",
       icon: item.domain || undefined,
       details: item.detail || item.identifier_display || "Source returned a technical observation.",
-      risk: "low",
     });
     addEdge(targetId, observationId, "source_observation", "Observed", item.confidence === "high" ? "high" : "medium");
   });
