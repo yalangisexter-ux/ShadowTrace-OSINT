@@ -484,14 +484,13 @@ async function getSoft404Baseline(probeUrl: string, targetUrl: string, username:
   return pending;
 }
 
-export function profilePathMatchesUsername(profileUrl: string, username: string, providerDomain: string): boolean {
+export function profilePathMatchesUsername(profileUrl: string, username: string): boolean {
   try {
     const url = new URL(profileUrl);
-    const host = url.hostname.toLowerCase().replace(/^www\\./, "");
-    const domain = providerDomain.toLowerCase().replace(/^www\\./, "");
+    const host = url.hostname.toLowerCase().replace(/^www\./, "");
     const wanted = decodeURIComponent(username).toLowerCase();
-    if (domain === "substack.com") return host === `${wanted}.substack.com`;
-    if (host !== domain && !host.endsWith(`.${domain}`)) return false;
+    // Substack encodes the account handle in the tenant hostname.
+    if (host.endsWith(".substack.com")) return host === `${wanted}.substack.com`;
     const segments = url.pathname.split("/").filter(Boolean).map(segment => {
       try { return decodeURIComponent(segment).replace(/^[@~]/, "").toLowerCase(); }
       catch { return segment.replace(/^[@~]/, "").toLowerCase(); }
@@ -938,7 +937,7 @@ export async function checkProvider(
           } else {
             const signals = extractProfileSignals(html, username, finalUrl);
             const markerMatch = provider.existsMarkers.some(marker => body.includes(marker.toLowerCase()));
-            const pathMatchesUsername = profilePathMatchesUsername(finalUrl, username, provider.domain);
+            const pathMatchesUsername = profilePathMatchesUsername(finalUrl, username);
             if (signals.titleMentionsUsername && pathMatchesUsername) {
               state = "candidate";
               confidence = markerMatch ? "high" : "medium";
