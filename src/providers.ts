@@ -683,18 +683,23 @@ export async function checkProvider(
     } else if (provider.type === "api_chess") {
       if (status === 200) {
         const d: any = await response.json();
-        state = "candidate";
-        confidence = "high";
-        identityName = typeof d.name === "string" ? d.name : undefined;
-        identifierDisplay = `Chess.com: @${d.username || username}`;
-        fieldsCount = 3;
-        extraFields = {
-          "Player": d.name || username,
-          "Player ID": String(d.player_id || ""),
-          "Status": d.status || "active",
-          ...(d.avatar ? { "Avatar": d.avatar } : {})
-        };
-        detail = `Active Chess.com player (ID: ${d.player_id ?? d.username}, Status: ${d.status || "active"}).`;
+        if (String(d.username || "").toLowerCase() === username.toLowerCase()) {
+          state = "candidate";
+          confidence = "high";
+          identityName = typeof d.name === "string" ? d.name : undefined;
+          identifierDisplay = `Chess.com: @${d.username}`;
+          fieldsCount = 3;
+          extraFields = {
+            ...(d.name ? { "Player name": String(d.name) } : {}),
+            "Player ID": String(d.player_id || ""),
+            ...(d.status ? { "Status": String(d.status) } : {}),
+            ...(d.avatar ? { "Avatar": String(d.avatar) } : {})
+          };
+          detail = "Chess.com API returned the exact requested player username.";
+        } else {
+          state = "inconclusive";
+          detail = "Chess.com response did not confirm the exact requested username.";
+        }
       } else if (status === 404) {
         state = "not_found";
         confidence = "none";
@@ -703,19 +708,25 @@ export async function checkProvider(
         state = "inconclusive";
         detail = `Chess.com API responded HTTP ${status}.`;
       }
+    }
     } else if (provider.type === "api_lichess") {
       if (status === 200) {
         const d: any = await response.json();
-        state = "candidate";
-        confidence = "high";
-        identityName = undefined;
-        identifierDisplay = `Lichess: @${d.username || username}`;
-        fieldsCount = 2;
-        extraFields = {
-          "Player": d.username || username,
-          "Total Games": String(d.count?.all || 0)
-        };
-        detail = `Active Lichess player (Play count: ${d.count?.all ?? 0}, Seen: ${d.seenAt ? new Date(d.seenAt).toISOString().slice(0,10) : "recently"}).`;
+        if (String(d.username || "").toLowerCase() === username.toLowerCase()) {
+          state = "candidate";
+          confidence = "high";
+          identifierDisplay = `Lichess: @${d.username}`;
+          fieldsCount = 2;
+          extraFields = {
+            "Username": String(d.username),
+            "Total games": String(d.count?.all ?? 0),
+            ...(d.seenAt ? { "Last seen timestamp": new Date(d.seenAt).toISOString() } : {})
+          };
+          detail = "Lichess API returned the exact requested player username.";
+        } else {
+          state = "inconclusive";
+          detail = "Lichess response did not confirm the exact requested username.";
+        }
       } else if (status === 404) {
         state = "not_found";
         confidence = "none";
@@ -724,20 +735,25 @@ export async function checkProvider(
         state = "inconclusive";
         detail = `Lichess responded HTTP ${status}.`;
       }
+    }
     } else if (provider.type === "api_docker") {
       if (status === 200) {
         const d: any = await response.json();
-        state = "candidate";
-        confidence = "high";
-        identityName = undefined;
-        identifierDisplay = `Docker Hub: @${d.username || username}`;
-        fieldsCount = 3;
-        extraFields = {
-          "Username": d.username || username,
-          "Account Type": d.type || "Developer",
-          "Registry": "Docker Hub"
-        };
-        detail = `Active Docker Hub publisher account (@${d.username || username}).`;
+        if (String(d.username || "").toLowerCase() === username.toLowerCase()) {
+          state = "candidate";
+          confidence = "high";
+          identifierDisplay = `Docker Hub: @${d.username}`;
+          fieldsCount = 3;
+          extraFields = {
+            "Username": String(d.username),
+            ...(d.type ? { "Account type": String(d.type) } : {}),
+            "Registry": "Docker Hub"
+          };
+          detail = "Docker Hub API returned the exact requested username.";
+        } else {
+          state = "inconclusive";
+          detail = "Docker Hub response did not confirm the exact requested username.";
+        }
       } else if (status === 404) {
         state = "not_found";
         confidence = "none";
@@ -746,6 +762,7 @@ export async function checkProvider(
         state = "inconclusive";
         detail = `Docker Hub API responded HTTP ${status}.`;
       }
+    }
     } else if (provider.type === "api_hn") {
       if (status === 200) {
         const text = await response.text();
@@ -755,16 +772,21 @@ export async function checkProvider(
           detail = "No Hacker News account exists with this username.";
         } else {
           const d: any = JSON.parse(text);
-          state = "candidate";
-          confidence = "high";
-          identityName = undefined;
-          identifierDisplay = `Hacker News: @${username}`;
-          fieldsCount = 2;
-          extraFields = {
-            "Karma": String(d.karma ?? 0),
-            "Registered": d.created ? new Date(d.created * 1000).toISOString().slice(0, 10) : "Active"
-          };
-          detail = `Verified Hacker News user (Karma: ${d.karma ?? 0}).`;
+          if (String(d.id || "").toLowerCase() === username.toLowerCase()) {
+            state = "candidate";
+            confidence = "high";
+            identifierDisplay = `Hacker News: @${d.id}`;
+            fieldsCount = 2;
+            extraFields = {
+              "Username": String(d.id),
+              "Karma": String(d.karma ?? 0),
+              ...(d.created ? { "Account creation timestamp": new Date(d.created * 1000).toISOString() } : {})
+            };
+            detail = "Hacker News API returned the exact requested user ID.";
+          } else {
+            state = "inconclusive";
+            detail = "Hacker News response did not confirm the exact requested user ID.";
+          }
         }
       } else if (status === 404) {
         state = "not_found";
@@ -773,25 +795,26 @@ export async function checkProvider(
         state = "inconclusive";
         detail = `Hacker News responded HTTP ${status}.`;
       }
+    }
     } else if (provider.type === "api_keybase") {
       if (status === 200) {
         const d: any = await response.json();
-        if (d.them && d.them[0] && d.them[0].id) {
+        const profile = d.them?.[0];
+        const returnedUsername = String(profile?.basics?.username || "").toLowerCase();
+        if (profile?.id && returnedUsername === username.toLowerCase()) {
           state = "candidate";
           confidence = "high";
-          identityName = undefined;
-          identifierDisplay = `Keybase: ${username}`;
+          identifierDisplay = `Keybase: ${returnedUsername}`;
           fieldsCount = 2;
           extraFields = {
-            "Keybase UID": d.them[0].id,
-            "Verification": "Cryptographically Verified PGP",
-            ...(d.them[0].pictures?.primary?.url ? { "Avatar": d.them[0].pictures.primary.url } : {})
+            "Keybase UID": String(profile.id),
+            "Username": returnedUsername,
+            ...(profile.pictures?.primary?.url ? { "Avatar": String(profile.pictures.primary.url) } : {})
           };
-          detail = `Verified Keybase cryptographic identity.`;
+          detail = "Keybase API returned the exact requested username and profile ID. This is not independent proof of a real-world identity.";
         } else {
-          state = "not_found";
-          confidence = "none";
-          detail = "Keybase user does not exist.";
+          state = "inconclusive";
+          detail = "Keybase response did not confirm the exact requested username.";
         }
       } else if (status === 404) {
         state = "not_found";
@@ -801,26 +824,24 @@ export async function checkProvider(
         state = "inconclusive";
         detail = `Keybase API responded HTTP ${status}.`;
       }
+    }
     } else if (provider.type === "api_artstation") {
       if (status === 200) {
-        const text = await response.text();
-        let payload: any = null;
-        try { payload = JSON.parse(text); } catch {}
-        if (payload && typeof payload === "object" && !Array.isArray(payload) && (typeof payload.id === "number" || (typeof payload.id === "string" && payload.id.length > 0)) && !payload.error) {
+        const payload: any = await response.json().catch(() => null);
+        const returnedUsername = String(payload?.username || payload?.slug || "").toLowerCase();
+        if (payload && returnedUsername === username.toLowerCase()) {
           state = "candidate";
           confidence = "high";
-          identityName = undefined;
-          identifierDisplay = `ArtStation: @${username}`;
+          identifierDisplay = `ArtStation: @${returnedUsername}`;
           fieldsCount = 2;
           extraFields = {
-            "Platform": "ArtStation",
+            "Username": returnedUsername,
             "Profile": targetUrl
           };
-          detail = "Verified ArtStation creator profile.";
+          detail = "ArtStation API returned a profile with the exact requested username.";
         } else {
-          state = "not_found";
-          confidence = "none";
-          detail = "ArtStation artist profile does not exist.";
+          state = "inconclusive";
+          detail = "ArtStation response did not confirm the exact requested username.";
         }
       } else if (status === 404) {
         state = "not_found";
@@ -829,23 +850,24 @@ export async function checkProvider(
         state = "inconclusive";
         detail = `ArtStation API responded HTTP ${status}.`;
       }
+    }
     } else if (provider.type === "api_glitch") {
       if (status === 200) {
         const d: any = await response.json();
-        if (d && d.id) {
+        const returnedUsername = String(d?.login || d?.username || "").toLowerCase();
+        if (d?.id && returnedUsername === username.toLowerCase()) {
           state = "candidate";
           confidence = "high";
-          identityName = undefined;
-          identifierDisplay = `Glitch: @${username}`;
+          identifierDisplay = `Glitch: @${returnedUsername}`;
           fieldsCount = 2;
           extraFields = {
             "Glitch ID": String(d.id),
-            "Platform": "Glitch Web Development"
+            "Username": returnedUsername,
           };
-          detail = `Active Glitch developer account (ID: ${d.id}).`;
+          detail = "Glitch API returned the exact requested username.";
         } else {
-          state = "not_found";
-          detail = "Glitch user does not exist.";
+          state = "inconclusive";
+          detail = "Glitch response did not confirm the exact requested username.";
         }
       } else if (status === 404) {
         state = "not_found";
@@ -855,32 +877,33 @@ export async function checkProvider(
         state = "inconclusive";
         detail = `Glitch API responded HTTP ${status}.`;
       }
+    }
     } else if (provider.type === "api_reddit") {
       if (status === 200) {
         const d: any = await response.json();
-        if (d.data && d.data.name) {
+        const returnedUsername = String(d.data?.name || "").toLowerCase();
+        if (returnedUsername === username.toLowerCase()) {
           state = "candidate";
           confidence = "high";
-          identityName = undefined;
-          identifierDisplay = `u/${d.data.name}`;
+          identifierDisplay = `u/${returnedUsername}`;
           fieldsCount = 2;
-          const redditIcon = d.data.icon_img ? d.data.icon_img.split("?")[0] : "";
+          const redditIcon = d.data.icon_img ? String(d.data.icon_img).split("?")[0] : "";
           extraFields = {
-            "Total Karma": String(d.data.total_karma ?? 0),
-            "Account": "Verified Reddit User",
+            "Username": returnedUsername,
+            "Total karma": String(d.data.total_karma ?? 0),
             ...(redditIcon && !redditIcon.includes("default") ? { "Avatar": redditIcon } : {})
           };
-          detail = `Active Reddit account (Karma: ${d.data.total_karma ?? 0}).`;
+          detail = "Reddit API returned the exact requested username.";
         } else {
-          state = "not_found";
-          detail = "Nobody on Reddit goes by that name.";
+          state = "inconclusive";
+          detail = "Reddit response did not confirm the exact requested username.";
         }
       } else if (status === 404) {
         state = "not_found";
         detail = "Nobody on Reddit goes by that name.";
       } else {
         state = "inconclusive";
-        detail = "Reddit restricted external lookup (HTTP 403 / anti-bot).";
+        detail = `Reddit restricted external lookup or returned HTTP ${status}.`;
       }
     }
     // 2. Standard HTML inspection with redirect awareness
