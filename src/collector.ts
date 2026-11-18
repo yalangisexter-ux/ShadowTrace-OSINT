@@ -101,7 +101,38 @@ class CollectorRegistry {
 
 export const collectorManager = new CollectorRegistry();
 
-// 1. Domain Collector Plugin
+function isUsefulDisplayName(name: string, query: string): boolean {
+  const raw = name.trim();
+  if (raw.length < 2 || raw.length > 80) return false;
+  const lower = raw.toLowerCase();
+  const q = query.toLowerCase();
+  if (lower === q) return false;
+  if (lower.startsWith("http://") || lower.startsWith("https://")) return false;
+  if (lower.startsWith("~") || lower.startsWith("@")) return false;
+
+  const blockedExact = new Set([
+    "bitbucket", "github", "gitlab", "steam community", "medium", "substack", "reddit",
+    "page not found", "not found", "404", "sign in", "log in", "undefined", "null",
+    "deviantart", "docker hub", "npm", "pypi", "replit", "glitch", "codepen",
+    "soundcloud", "behance", "dribbble", "artstation", "about.me", "linktree",
+    "patreon", "product hunt", "keybase", "mastodon", "telegram", "lobsters",
+    "hacker news", "chess.com", "lichess", "sourcehut", "codeberg", "hashnode",
+    "dev community", "buy me a coffee",
+  ]);
+  if (blockedExact.has(lower)) return false;
+
+  const blockedSubstrings = [
+    "page not found", "404", "not found", "sign in", "log in", "official:",
+    "tiktok, instagram", "facebook, twitch", "we couldn't find", "does not exist",
+  ];
+  if (blockedSubstrings.some((s) => lower.includes(s))) return false;
+
+  if ((raw.match(/[|·—]/g) || []).length >= 2) return false;
+  if (/^[\W_]+$/.test(raw)) return false;
+
+  return true;
+}
+
 collectorManager.register({
   id: "collector-domain",
   name: "Domain & DNS Intelligence",
@@ -131,7 +162,6 @@ collectorManager.register({
   },
 });
 
-// 2. IP Collector Plugin
 collectorManager.register({
   id: "collector-ip",
   name: "IP Geolocation & Network Intelligence",
@@ -166,7 +196,6 @@ collectorManager.register({
   },
 });
 
-// 3. Email Collector Plugin
 collectorManager.register({
   id: "collector-email",
   name: "Reverse Email & Identity Engine",
@@ -201,7 +230,6 @@ collectorManager.register({
   },
 });
 
-// 4. Phone Collector Plugin
 collectorManager.register({
   id: "collector-phone",
   name: "Telecom & Mobile Subscriber Intelligence",
@@ -261,13 +289,12 @@ collectorManager.register({
   },
 });
 
-// 5. Username Collector Plugin
 collectorManager.register({
   id: "collector-username",
   name: "Multi-Platform Username Reconnaissance",
-  version: "1.2.0",
+  version: "1.2.1",
   targetTypes: ["username"],
-  description: "Sherlock and Maigret style reconnaissance scanning 34+ public platforms with avatar and display name extraction.",
+  description: "Public-profile username checks across 30+ platforms with avatar and display-name extraction. Candidate only — not identity proof.",
   health: async () => ({ ok: true }),
   execute: async (query, options) => {
     const depth = options?.depth || 0;
@@ -275,21 +302,21 @@ collectorManager.register({
 
     const discoveredNames = new Set<string>();
     const discoveredAvatars = new Set<string>();
-    const INVALID_NAMES = new Set([
-      "bitbucket", "github", "gitlab", "steam community", "medium", "substack", "reddit",
-      "page not found", "not found", "404", "sign in", "log in", "undefined", "null", "deviantart"
-    ]);
 
     for (const r of results) {
-      if (r.status === "candidate") {
-        if (r.identity_name && r.identity_name !== query) {
-          const lower = r.identity_name.toLowerCase().trim();
-          if (!INVALID_NAMES.has(lower) && !lower.startsWith("http") && lower.length >= 2) {
-            discoveredNames.add(r.identity_name);
-          }
-        }
-        const avatarUrl = r.extra_fields?.Avatar || r.extra_fields?.avatar || r.extra_fields?.["Avatar URL"];
-        if (avatarUrl && typeof avatarUrl === "string" && avatarUrl.startsWith("http")) {
+      if (r.status !== "candidate") continue;
+
+      if (r.identity_name && isUsefulDisplayName(r.identity_name, query)) {
+        discoveredNames.add(r.identity_name.trim());
+      }
+
+      const avatarUrl =
+        r.extra_fields?.Avatar ||
+        r.extra_fields?.avatar ||
+        r.extra_fields?.["Avatar URL"];
+      if (typeof avatarUrl === "string" && avatarUrl.startsWith("http")) {
+        const lower = avatarUrl.toLowerCase();
+        if (!lower.includes("favicon") && !lower.includes("/logo")) {
           discoveredAvatars.add(avatarUrl);
         }
       }
@@ -300,20 +327,18 @@ collectorManager.register({
       type: "username",
       label: query,
       entities: {
-        names: Array.from(discoveredNames),
-        profile_pictures: Array.from(discoveredAvatars),
+        names: Array.from(discoveredNames).slice(0, 20),
+        profile_pictures: Array.from(discoveredAvatars).slice(0, 12),
         banners: [],
         usernames: [query],
         emails: [],
         phones: [],
-
       },
       evidence: results,
     };
   },
 });
 
-// 6. Cryptocurrency Collector Plugin
 collectorManager.register({
   id: "collector-crypto",
   name: "Cryptocurrency & Blockchain Ledger Engine",
@@ -347,7 +372,6 @@ collectorManager.register({
   },
 });
 
-// 7. Metadata & Forensics Collector Plugin
 collectorManager.register({
   id: "collector-metadata",
   name: "Document & EXIF Forensic Metadata Engine",
