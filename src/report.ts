@@ -103,9 +103,14 @@ ${(data.ai?.timeline || []).map(t => `| **${t.date}** | ${t.title} | ${t.descrip
 ---
 
 ## 5. Candidate Evidence & Platform Footprints (${candidates.length})
-| Provider | Category | Discovered Identity / Details | Verification | Source URL |
+| Provider | Category | Discovered Identity / Details | Confidence | Source URL |
 |---|---|---|---|---|
-${candidates.map(c => `| **${c.provider}** | ${c.category || 'Identity'} | ${c.identity_name ? `**${c.identity_name}** - ` : ''}${c.identifier_display || c.detail || 'Confirmed profile'} | ${c.confidence === 'high' ? 'High-confidence candidate' : 'Candidate'} | [Open Profile](${c.profile_url || '#'}) |`).join("\n")}
+${candidates.map(c => `| **${c.provider}** | ${c.category || 'Identity'} | ${c.identity_name ? `**${c.identity_name}** - ` : ''}${c.identifier_display || c.detail || 'Candidate profile'} | ${c.confidence || 'unknown'} candidate | [Open source](${c.profile_url || '#'}) |`).join("\n")}
+
+## 6. Technical Observations (${observations.length})
+| Provider | Observation | Collected at | Source URL |
+|---|---|---|---|
+${observations.map(o => `| **${o.provider}** | ${(o.detail || o.identifier_display || 'Observation').replace(/\|/g, '\\|')} | ${o.checked_at || '—'} | [Open source](${o.profile_url || '#'}) |`).join("\n")}
 
 ---
 
@@ -136,6 +141,7 @@ export function generateCSVReport(data: ReportData): string {
 
 export function generateHTMLReport(data: ReportData): string {
   const candidates = data.evidence.filter(e => e.status === "candidate");
+  const observations = data.evidence.filter(e => e.status === "observed");
   const md = generateMarkdownReport(data);
 
   return `<!DOCTYPE html>
