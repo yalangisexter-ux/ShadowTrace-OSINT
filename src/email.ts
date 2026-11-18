@@ -1,9 +1,9 @@
 /**
- * Email Reverse Identity & Intelligence Engine
- * Free, deterministic OSINT grounded in live APIs and cryptographic keyservers.
- * Strictly genuine: NO fake platform cards, NO fake names, NO fake recovery phones.
+ * Email intelligence from public, source-backed records.
+ * Mail routing is a domain fact, not proof that a mailbox exists.
+ * Account-registration enumeration endpoints and guessed recovery details
+ * are intentionally excluded.
  */
-
 export interface EmailResult {
   email: string;
   username: string;
@@ -25,517 +25,323 @@ export interface EmailResult {
     name: string;
     category: string;
     url: string;
-    status: "verified" | "candidate" | "inconclusive";
+    status: "observed" | "candidate" | "not_found" | "inconclusive";
     verified?: boolean;
+    confidence?: "high" | "medium" | "low" | "none";
     identityName?: string;
     identifierDisplay?: string;
     fieldsCount?: number;
     extraFields?: Record<string, string>;
     detail: string;
     icon: string;
+    httpStatus?: number | null;
   }[];
 }
 
 const COMMON_PROVIDERS: Record<string, string> = {
-  "gmail.com": "Google Mail (Gmail)",
-  "googlemail.com": "Google Mail (Gmail)",
-  "outlook.com": "Microsoft Outlook",
-  "hotmail.com": "Microsoft Hotmail",
-  "live.com": "Microsoft Live",
-  "msn.com": "Microsoft MSN",
-  "yahoo.com": "Yahoo Mail",
-  "icloud.com": "Apple iCloud",
-  "me.com": "Apple iCloud",
-  "proton.me": "ProtonMail (End-to-End Encrypted)",
-  "protonmail.com": "ProtonMail (End-to-End Encrypted)",
-  "zoho.com": "Zoho Mail",
-  "mail.com": "Mail.com",
-  "gmx.com": "GMX Mail",
-  "yandex.com": "Yandex Mail",
-  "fastmail.com": "Fastmail",
+  "gmail.com": "Google Mail (Gmail)", "googlemail.com": "Google Mail (Gmail)",
+  "outlook.com": "Microsoft Outlook", "hotmail.com": "Microsoft Hotmail",
+  "live.com": "Microsoft Live", "msn.com": "Microsoft MSN",
+  "yahoo.com": "Yahoo Mail", "icloud.com": "Apple iCloud", "me.com": "Apple iCloud",
+  "proton.me": "Proton Mail", "protonmail.com": "Proton Mail",
+  "zoho.com": "Zoho Mail", "mail.com": "Mail.com", "gmx.com": "GMX Mail",
+  "yandex.com": "Yandex Mail", "fastmail.com": "Fastmail",
 };
-
 const DISPOSABLE_DOMAINS = new Set([
-  "mailinator.com", "10minutemail.com", "guerrillamail.com", "tempmail.com", "yopmail.com",
-  "throwawaymail.com", "sharklasers.com", "getairmail.com", "dispostable.com", "mytemp.email",
-  "fakeinbox.com", "trashmail.com", "temp-mail.org", "burnermail.io", "maildrop.cc"
+  "mailinator.com", "10minutemail.com", "guerrillamail.com", "tempmail.com",
+  "yopmail.com", "throwawaymail.com", "sharklasers.com", "getairmail.com",
+  "dispostable.com", "mytemp.email", "fakeinbox.com", "trashmail.com",
+  "temp-mail.org", "burnermail.io", "maildrop.cc",
 ]);
 
-// 1. OpenPGP Ubuntu Keyserver lookup
-async function queryPgpKeyserver(email: string): Promise<{ names: string[]; altEmails: string[] }> {
+async function fetchWithTimeout(url: string, timeoutMs = 4500, init: RequestInit = {}): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 3500);
-    const url = `https://keyserver.ubuntu.com/pks/lookup?op=vindex&search=${encodeURIComponent(email)}`;
-    const res = await fetch(url, {
-      headers: { "User-Agent": "ShadowTrace-OSINT/2.0" },
-      signal: controller.signal,
-    });
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
     clearTimeout(timer);
-    if (!res.ok) return { names: [], altEmails: [] };
-    const text = await res.text();
+  }
+}
+
+async function queryPgpKeyserver(email: string): Promise<{ names: string[]; altEmails: string[]; status: number | null }> {
+  try {
+    const url = `https://keyserver.ubuntu.com/pks/lookup?op=vindex&search=${encodeURIComponent(email)}`;
+    const res = await fetchWithTimeout(url, 4500, { headers: { "User-Agent": "ShadowTrace-OSINT/2.1" } });
+    if (!res.ok) return { names: [], altEmails: [], status: res.status };
+    const body = await res.text();
     const names = new Set<string>();
     const altEmails = new Set<string>();
-    const matches = text.matchAll(/<span class="uid">(.*?)<\/span>/g);
-    for (const m of matches) {
-      const raw = m[1];
-      const emailMatch = raw.match(/<([^>]+)>/);
-      const nameMatch = raw.match(/^([^<(]+)/);
-      if (emailMatch && emailMatch[1]) {
-        const found = emailMatch[1].trim().toLowerCase();
-        if (found !== email.toLowerCase() && found.includes("@")) {
-          altEmails.add(found);
-        }
+    for (const match of body.matchAll(/<span class="uid">([\s\S]*?)<\/span>/gi)) {
+      const raw = match[1].replace(/<[^>]*>/g, "").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&").trim();
+      const emailMatch = raw.match(/<([^<>\s]+@[^<>\s]+)>/);
+      const name = raw.replace(/<[^<>]*>/g, "").trim();
+      if (emailMatch?.[1] && emailMatch[1].toLowerCase() !== email) altEmails.add(emailMatch[1].toLowerCase());
+      if (name.length > 1 && !name.includes("@")) names.add(name);
+    }
+    return { names: Array.from(names), altEmails: Array.from(altEmails), status: res.status };
+  } catch { return { names: [], altEmails: [], status: null }; }
+}
+
+async function queryGravatar(hash: string): Promise<{ displayName?: string; photo?: string; aboutMe?: string; found: boolean; status: number | null }> {
+  try {
+    const res = await fetchWithTimeout(`https://en.gravatar.com/${hash}.json`, 3500, {
+      headers: { "User-Agent": "ShadowTrace-OSINT/2.1" },
+    });
+    if (res.ok) {
+      const data = await res.json() as any;
+      const entry = Array.isArray(data.entry) ? data.entry[0] : undefined;
+      if (entry) {
+        return {
+          displayName: typeof entry.displayName === "string" ? entry.displayName : undefined,
+          photo: typeof entry.photos?.[0]?.value === "string" ? entry.photos[0].value : undefined,
+          aboutMe: typeof entry.aboutMe === "string" ? entry.aboutMe : undefined,
+          found: true,
+          status: res.status,
+        };
       }
-      if (nameMatch && nameMatch[1]) {
-        const foundName = nameMatch[1].trim();
-        if (foundName.length > 1 && !foundName.includes("@")) {
-          names.add(foundName);
-        }
-      }
     }
-    return { names: Array.from(names), altEmails: Array.from(altEmails) };
-  } catch {
-    return { names: [], altEmails: [] };
-  }
+    const avatar = await fetchWithTimeout(`https://gravatar.com/avatar/${hash}?d=404`, 3000, { method: "HEAD" });
+    return avatar.ok ? { photo: `https://gravatar.com/avatar/${hash}?s=200`, found: true, status: avatar.status } : { found: false, status: res.status };
+  } catch { return { found: false, status: null }; }
 }
 
-// 2. Gravatar JSON & Avatar lookup
-async function queryGravatar(sha256Hex: string): Promise<{ displayName?: string; photo?: string; found: boolean; aboutMe?: string }> {
+async function queryGithubCommits(email: string): Promise<{
+  commits: Array<{ author: string; login?: string; avatar?: string; date?: string; url?: string }>;
+  status: number | null;
+}> {
   try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 3000);
-    const res = await fetch(`https://en.gravatar.com/${sha256Hex}.json`, {
-      headers: { "User-Agent": "ShadowTrace-OSINT/2.0" },
-      signal: controller.signal,
+    const url = `https://api.github.com/search/commits?q=author-email:${encodeURIComponent(email)}&per_page=20`;
+    const res = await fetchWithTimeout(url, 5000, {
+      headers: { "User-Agent": "ShadowTrace-OSINT/2.1", "Accept": "application/vnd.github+json" },
     });
-    clearTimeout(timer);
-    if (!res.ok) {
-      // Check head for avatar presence
-      const headRes = await fetch(`https://gravatar.com/avatar/${sha256Hex}?d=404`, { method: "HEAD" });
-      if (headRes.status === 200) {
-        return { photo: `https://gravatar.com/avatar/${sha256Hex}?s=200`, found: true };
-      }
-      return { found: false };
-    }
-    const data: any = await res.json();
-    if (data.entry && data.entry.length > 0) {
-      const entry = data.entry[0];
-      return {
-        displayName: entry.displayName || entry.preferredUsername,
-        photo: entry.photos?.[0]?.value || `https://gravatar.com/avatar/${sha256Hex}?s=200`,
-        aboutMe: entry.aboutMe,
-        found: true,
-      };
-    }
-    return { found: false };
-  } catch {
-    return { found: false };
-  }
+    if (!res.ok) return { commits: [], status: res.status };
+    const data = await res.json() as any;
+    const commits = (Array.isArray(data.items) ? data.items : [])
+      .filter((item: any) => String(item.commit?.author?.email || "").toLowerCase() === email)
+      .map((item: any) => ({
+        author: String(item.commit?.author?.name || ""),
+        login: item.author?.login ? String(item.author.login) : undefined,
+        avatar: item.author?.avatar_url ? String(item.author.avatar_url) : undefined,
+        date: item.commit?.author?.date ? String(item.commit.author.date) : undefined,
+        url: item.html_url ? String(item.html_url) : undefined,
+      }))
+      .filter((item: any) => item.author);
+    return { commits, status: res.status };
+  } catch { return { commits: [], status: null }; }
 }
 
-// 3. Duolingo API lookup
-async function queryDuolingo(email: string): Promise<{ username?: string; name?: string; picture?: string; found: boolean }> {
+async function queryMxRecords(domain: string): Promise<{ records: string[]; status: number | null; ok: boolean }> {
   try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 3000);
-    const res = await fetch(`https://www.duolingo.com/2017-06-30/users?email=${encodeURIComponent(email)}`, {
-      headers: { "User-Agent": "ShadowTrace-OSINT/2.0" },
-      signal: controller.signal,
-    });
-    clearTimeout(timer);
-    if (!res.ok) return { found: false };
-    const data: any = await res.json();
-    if (data.users && data.users.length > 0) {
-      const u = data.users[0];
-      let pic = u.picture;
-      if (pic && !pic.startsWith("http")) {
-        pic = `https:${pic}`;
-      }
-      return {
-        username: u.username,
-        name: u.name,
-        picture: pic,
-        found: true,
-      };
-    }
-    return { found: false };
-  } catch {
-    return { found: false };
-  }
-}
-
-// 4. GitHub Commits Search (Real Author & Login Discovery)
-async function queryGithubCommits(email: string): Promise<{ author?: string; avatar?: string; login?: string; found: boolean }> {
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 3500);
-    const res = await fetch(`https://api.github.com/search/commits?q=author-email:${encodeURIComponent(email)}`, {
-      headers: {
-        "User-Agent": "ShadowTrace-OSINT/2.0",
-        "Accept": "application/vnd.github.cloak-preview",
-      },
-      signal: controller.signal,
-    });
-    clearTimeout(timer);
-    if (!res.ok) return { found: false };
-    const data: any = await res.json();
-    if (data.items && data.items.length > 0) {
-      const first = data.items[0];
-      const author = first.commit?.author?.name;
-      const avatar = first.author?.avatar_url;
-      const login = first.author?.login;
-      return { author, avatar, login, found: true };
-    }
-    return { found: false };
-  } catch {
-    return { found: false };
-  }
-}
-
-// 5. Twitter / X Registration Availability
-async function queryTwitterAvailable(email: string): Promise<boolean> {
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 2500);
-    const res = await fetch(`https://api.twitter.com/i/users/email_available.json?email=${encodeURIComponent(email)}`, {
-      headers: { "User-Agent": "ShadowTrace-OSINT/2.0" },
-      signal: controller.signal,
-    });
-    clearTimeout(timer);
-    if (!res.ok) return false;
-    const data: any = await res.json();
-    return data.taken === true;
-  } catch {
-    return false;
-  }
-}
-
-// 6. Spotify Public Registration Validator
-async function querySpotify(email: string): Promise<{ registered: boolean; country?: string }> {
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 3000);
-    const res = await fetch(`https://spclient.wg.spotify.com/signup/public/v1/account?validate=1&email=${encodeURIComponent(email)}`, {
-      headers: { "User-Agent": "ShadowTrace-OSINT/2.0" },
-      signal: controller.signal,
-    });
-    clearTimeout(timer);
-    if (!res.ok) return { registered: false };
-    const data: any = await res.json();
-    if (data.status === 20) {
-      return { registered: true, country: data.country };
-    }
-    return { registered: false };
-  } catch {
-    return { registered: false };
-  }
-}
-
-// 7. WordPress.com Auth Options
-async function queryWordpress(email: string): Promise<boolean> {
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 3000);
-    const res = await fetch(`https://public-api.wordpress.com/rest/v1.1/users/${encodeURIComponent(email)}/auth-options?http_envelope=1`, {
-      headers: { "User-Agent": "ShadowTrace-OSINT/2.0" },
-      signal: controller.signal,
-    });
-    clearTimeout(timer);
-    if (!res.ok) return false;
-    const data: any = await res.json();
-    if (data.body?.email_verified === true || data.body?.error === "email_login_not_allowed") {
-      return true;
-    }
-    return false;
-  } catch {
-    return false;
-  }
-}
-
-// 8. DNS MX Verification via Cloudflare DoH
-async function queryMxRecords(domain: string): Promise<string[]> {
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 3000);
-    const res = await fetch(`https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(domain)}&type=MX`, {
-      headers: { "Accept": "application/dns-json" },
-      signal: controller.signal,
-    });
-    clearTimeout(timer);
-    if (!res.ok) return [];
-    const data: any = await res.json();
-    return (data.Answer || []).map((a: any) => a.data?.replace(/\.$/, "")).filter(Boolean);
-  } catch {
-    return [];
-  }
+    const res = await fetchWithTimeout(
+      `https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(domain)}&type=MX`,
+      3500,
+      { headers: { Accept: "application/dns-json" } },
+    );
+    if (!res.ok) return { records: [], status: res.status, ok: false };
+    const data = await res.json() as { Answer?: Array<{ data?: string }> };
+    return {
+      records: (data.Answer || []).map(a => String(a.data || "").replace(/\.$/, "")).filter(Boolean),
+      status: res.status,
+      ok: true,
+    };
+  } catch { return { records: [], status: null, ok: false }; }
 }
 
 export async function analyzeEmail(email: string): Promise<EmailResult> {
   const cleaned = email.trim().toLowerCase();
-  const [username, domain] = cleaned.split("@");
-
+  const parts = cleaned.split("@");
+  if (parts.length !== 2 || !/^[^\s@]+$/.test(parts[0]) || !/^[a-z0-9.-]+\.[a-z]{2,63}$/i.test(parts[1])) {
+    throw new Error("Enter a valid email address.");
+  }
+  const [username, domain] = parts;
   const isDisposable = DISPOSABLE_DOMAINS.has(domain);
-  const provider = isDisposable 
-    ? `${domain} [WARNING: Disposable / Burner Email Service]`
-    : (COMMON_PROVIDERS[domain] || `${domain} (Corporate / Custom Mail Exchange)`);
-  
+  const provider = COMMON_PROVIDERS[domain] || `${domain} (mail domain)`;
   const isFreeProvider = Boolean(COMMON_PROVIDERS[domain]);
 
-  // Generate SHA-256 hash for Gravatar
-  const enc = new TextEncoder();
-  const hashBuffer = await crypto.subtle.digest("SHA-256", enc.encode(cleaned));
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  const sha256Hex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  const hashBuffer = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(cleaned));
+  const sha256Hex = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
 
-  // Entities container
-  const entities: EmailResult["entities"] = {
-    names: [],
-    profile_pictures: [],
-    banners: [],
-    usernames: [],
-    emails: [cleaned],
-    phones: [],
-    first_seen: undefined,
-    last_seen: undefined,
-  };
-
-  const platforms: EmailResult["platforms"] = [];
-
-  // Run live network queries concurrently
-  const [pgp, grav, duo, gh, twTaken, spotify, wpRegistered, mxServers] = await Promise.all([
+  const [pgp, grav, github, mx] = await Promise.all([
     queryPgpKeyserver(cleaned),
     queryGravatar(sha256Hex),
-    queryDuolingo(cleaned),
     queryGithubCommits(cleaned),
-    queryTwitterAvailable(cleaned),
-    querySpotify(cleaned),
-    queryWordpress(cleaned),
     queryMxRecords(domain),
   ]);
 
-  // 1. Ingest Discovered Names (ONLY real data from live services)
-  const rawNames = new Set<string>();
-  if (pgp.names.length > 0) pgp.names.forEach(n => rawNames.add(n));
-  if (grav.displayName && grav.displayName.length >= 2) rawNames.add(grav.displayName);
-  if (duo.name && duo.name.length >= 2) rawNames.add(duo.name);
-  if (gh.author && gh.author.length >= 2) rawNames.add(gh.author);
-  entities.names = Array.from(rawNames);
+  const names = new Set<string>();
+  pgp.names.forEach(name => names.add(name));
+  if (grav.displayName) names.add(grav.displayName);
+  github.commits.forEach(commit => names.add(commit.author));
 
-  // 2. Ingest Discovered Usernames
-  const rawUsernames = new Set<string>();
-  if (gh.login) rawUsernames.add(gh.login);
-  if (duo.username) rawUsernames.add(duo.username);
-  if (grav.displayName && !grav.displayName.includes(" ")) rawUsernames.add(grav.displayName);
-  entities.usernames = Array.from(rawUsernames);
+  const usernames = new Set<string>();
+  github.commits.forEach(commit => { if (commit.login) usernames.add(commit.login); });
+  if (grav.displayName && !grav.displayName.includes(" ")) usernames.add(grav.displayName);
 
-  // 3. Ingest Discovered Avatars (ONLY real pictures from live services)
-  const rawAvatars = new Set<string>();
-  if (gh.avatar) rawAvatars.add(gh.avatar);
-  if (grav.photo) rawAvatars.add(grav.photo);
-  if (duo.picture && !duo.picture.includes("default_2")) rawAvatars.add(duo.picture);
-  entities.profile_pictures = Array.from(rawAvatars);
+  const avatars = new Set<string>();
+  if (grav.photo) avatars.add(grav.photo);
+  github.commits.forEach(commit => { if (commit.avatar) avatars.add(commit.avatar); });
 
-  // 4. Ingest Discovered Linked / Secondary Emails
-  if (pgp.altEmails.length > 0) {
-    pgp.altEmails.forEach(e => {
-      if (!entities.emails.includes(e)) entities.emails.push(e);
+  const emails = new Set<string>([cleaned, ...pgp.altEmails]);
+  const platforms: EmailResult["platforms"] = [];
+
+  if (mx.ok) {
+    platforms.push({
+      name: "DOMAIN MAIL ROUTING (MX)",
+      category: "Domain infrastructure",
+      url: `https://mxtoolbox.com/SuperTool.aspx?action=mx%3a${encodeURIComponent(domain)}`,
+      status: mx.records.length ? "observed" : "not_found",
+      verified: true,
+      confidence: "high",
+      identifierDisplay: mx.records.length ? mx.records[0] : `No MX answer for ${domain}`,
+      fieldsCount: 2,
+      extraFields: { "Domain": domain, "MX records": mx.records.join(", ") || "No records returned" },
+      detail: mx.records.length
+        ? `DNS returned ${mx.records.length} MX record(s) for ${domain}. This is a domain-level mail-routing fact and does not prove that this mailbox exists.`
+        : `DNS query succeeded but returned no MX records for ${domain}. This does not prove the address is invalid.`,
+      icon: "cloudflare-dns.com",
+      httpStatus: mx.status,
+    });
+  } else {
+    platforms.push({
+      name: "DOMAIN MAIL ROUTING (MX)",
+      category: "Domain infrastructure",
+      url: `https://mxtoolbox.com/SuperTool.aspx?action=mx%3a${encodeURIComponent(domain)}`,
+      status: "inconclusive",
+      verified: false,
+      confidence: "none",
+      identifierDisplay: "MX provider unavailable",
+      detail: "DNS MX lookup failed; mailbox existence and mail routing remain unknown.",
+      icon: "cloudflare-dns.com",
+      httpStatus: mx.status,
     });
   }
 
-  // 5. Build Verified Live Platform Cards
-
-  // Platform: DNS Mail Routing & Deliverability
-  platforms.push({
-    name: "MAIL EXCHANGE (MX) ROUTING",
-    category: "Mail Server Infrastructure",
-    url: `https://mxtoolbox.com/SuperTool.aspx?action=mx%3a${encodeURIComponent(domain)}`,
-    status: mxServers.length > 0 ? "candidate" : "inconclusive",
-    verified: mxServers.length > 0,
-    identityName: provider,
-    identifierDisplay: mxServers.length > 0 ? `MX: ${mxServers[0]}` : `Domain: ${domain}`,
-    fieldsCount: 3,
-    extraFields: {
-      "Domain": domain,
-      "Provider": provider,
-      "MX Servers": mxServers.length > 0 ? mxServers.join(", ") : "No MX Records Found",
-      "Disposable Status": isDisposable ? "WARNING: Disposable Burner Service" : "Legitimate Mail Domain"
-    },
-    detail: mxServers.length > 0 
-      ? `Authoritative MX mail servers verified for ${domain} (${mxServers.length} host${mxServers.length > 1 ? 's' : ''}).`
-      : `No MX records found for ${domain}.`,
-    icon: "cloudflare-dns.com"
-  });
-
-  // Platform: GitHub Commits
-  if (gh.found && gh.author) {
+  if (github.commits.length) {
+    const first = github.commits[0];
     platforms.push({
-      name: "GITHUB",
-      category: "Developer & Code",
-      url: gh.login ? `https://github.com/${gh.login}` : `https://github.com/search?q=${encodeURIComponent(cleaned)}&type=commits`,
+      name: "GITHUB PUBLIC COMMITS",
+      category: "Public code activity",
+      url: first.url || `https://github.com/search?q=${encodeURIComponent(cleaned)}&type=commits`,
       status: "candidate",
-      verified: true,
-      identityName: gh.author,
-      identifierDisplay: `Author: ${gh.author} (@${gh.login || username})`,
+      verified: false,
+      confidence: "medium",
+      identityName: first.author,
+      identifierDisplay: `Commit author: ${first.author}${first.login ? ` (@${first.login})` : ""}`,
       fieldsCount: 3,
       extraFields: {
-        "Commit Author Name": gh.author,
-        "GitHub Handle": gh.login ? `@${gh.login}` : "Unmapped",
-        ...(gh.avatar ? { "Avatar": gh.avatar } : {}),
-        "VCS History": "Active Git Commit Contributor"
+        "Exact author email match": cleaned,
+        "Matching public commits": String(github.commits.length),
+        ...(first.date ? { "Commit date": first.date } : {}),
+        ...(first.login ? { "GitHub login": first.login } : {}),
       },
-      detail: `Verified Git author commit history and contributor profile on GitHub for ${cleaned}.`,
-      icon: "github.com"
+      detail: "GitHub search returned public commits whose commit-author email exactly matches the queried address. This is a candidate association, not proof of account ownership.",
+      icon: "github.com",
+      httpStatus: github.status,
+    });
+  } else if (github.status && github.status >= 200 && github.status < 300) {
+    platforms.push({
+      name: "GITHUB PUBLIC COMMITS",
+      category: "Public code activity",
+      url: `https://github.com/search?q=${encodeURIComponent(cleaned)}&type=commits`,
+      status: "not_found",
+      verified: false,
+      confidence: "none",
+      detail: "GitHub commit search returned no exact public commit-author email match.",
+      icon: "github.com",
+      httpStatus: github.status,
+    });
+  } else {
+    platforms.push({
+      name: "GITHUB PUBLIC COMMITS",
+      category: "Public code activity",
+      url: `https://github.com/search?q=${encodeURIComponent(cleaned)}&type=commits`,
+      status: "inconclusive",
+      verified: false,
+      confidence: "none",
+      detail: "GitHub search was unavailable or rate-limited; no conclusion is drawn.",
+      icon: "github.com",
+      httpStatus: github.status,
     });
   }
 
-  // Platform: Gravatar
   if (grav.found) {
     platforms.push({
-      name: "GRAVATAR",
-      category: "Avatar & Bio Identity",
+      name: "GRAVATAR PUBLIC PROFILE",
+      category: "Public avatar metadata",
       url: `https://gravatar.com/${sha256Hex}`,
       status: "candidate",
-      verified: true,
-      identityName: grav.displayName || username,
-      identifierDisplay: `Email: ${cleaned}`,
-      fieldsCount: 3,
+      verified: false,
+      confidence: "low",
+      ...(grav.displayName ? { identityName: grav.displayName } : {}),
+      identifierDisplay: "Matching public Gravatar resource",
+      fieldsCount: 2,
       extraFields: {
-        ...(grav.displayName ? { "Display Name": grav.displayName } : {}),
-        "Avatar Status": "Verified Globally Recognized Avatar",
-        ...(grav.photo ? { "Avatar": grav.photo } : {}),
-        "Hash": sha256Hex.slice(0, 16) + "..."
+        ...(grav.displayName ? { "Display name": grav.displayName } : {}),
+        ...(grav.photo ? { "Avatar URL": grav.photo } : {}),
+        ...(grav.aboutMe ? { "About": grav.aboutMe } : {}),
       },
-      detail: `Globally recognized avatar registered for ${cleaned}.${grav.aboutMe ? ' Bio: ' + grav.aboutMe : ''}`,
-      icon: "gravatar.com"
+      detail: "A public Gravatar resource exists for the email hash. This is a candidate association and does not independently verify who controls the mailbox.",
+      icon: "gravatar.com",
+      httpStatus: grav.status,
     });
-  }
-
-  // Platform: Duolingo
-  if (duo.found) {
+  } else {
     platforms.push({
-      name: "DUOLINGO",
-      category: "Education & Learning",
-      url: duo.username ? `https://www.duolingo.com/profile/${duo.username}` : "https://www.duolingo.com",
-      status: "candidate",
-      verified: true,
-      identityName: duo.name || duo.username || username,
-      identifierDisplay: `Learner: @${duo.username || username}`,
-      fieldsCount: 3,
-      extraFields: {
-        "Learner Handle": `@${duo.username || username}`,
-        ...(duo.name ? { "Profile Name": duo.name } : {}),
-        ...(duo.picture ? { "Avatar": duo.picture } : {})
-      },
-      detail: `Active registered language learner profile on Duolingo platform for ${cleaned}.`,
-      icon: "duolingo.com"
+      name: "GRAVATAR PUBLIC PROFILE",
+      category: "Public avatar metadata",
+      url: `https://gravatar.com/${sha256Hex}`,
+      status: grav.status && grav.status >= 200 && grav.status < 300 ? "not_found" : "inconclusive",
+      verified: false,
+      confidence: "none",
+      detail: "No public Gravatar profile was confirmed, or the provider did not return a usable response.",
+      icon: "gravatar.com",
+      httpStatus: grav.status,
     });
   }
 
-  // Platform: OpenPGP
-  if (pgp.names.length > 0 || pgp.altEmails.length > 0) {
+  if (pgp.names.length || pgp.altEmails.length) {
     platforms.push({
       name: "OPENPGP KEYSERVER",
-      category: "Cryptographic Identity",
+      category: "Public cryptographic metadata",
       url: `https://keyserver.ubuntu.com/pks/lookup?op=vindex&search=${encodeURIComponent(cleaned)}`,
       status: "candidate",
-      verified: true,
-      identityName: pgp.names[0] || "PGP Keyholder",
-      identifierDisplay: `Email: ${cleaned}`,
-      fieldsCount: 2 + pgp.altEmails.length,
-      extraFields: {
-        "Keyholder Identity": pgp.names.join(", ") || "PGP Keyholder",
-        ...(pgp.altEmails.length > 0 ? { "Linked Secondary Emails": pgp.altEmails.join(", ") } : {}),
-        "Registry": "Ubuntu / SKS Global Keyserver Pool"
-      },
-      detail: `Cryptographically verified PGP identity. Linked Name: "${pgp.names.join(', ')}"${pgp.altEmails.length > 0 ? ' · Secondary emails: ' + pgp.altEmails.join(', ') : ''}.`,
-      icon: "ubuntu.com"
-    });
-  }
-
-  // Platform: Twitter / X
-  if (twTaken) {
-    platforms.push({
-      name: "TWITTER / X",
-      category: "Social Media",
-      url: "https://x.com",
-      status: "candidate",
-      verified: true,
-      identifierDisplay: `Email: ${cleaned}`,
+      verified: false,
+      confidence: "medium",
+      ...(pgp.names[0] ? { identityName: pgp.names[0] } : {}),
+      identifierDisplay: "Email appears in a public OpenPGP user ID",
       fieldsCount: 2,
       extraFields: {
-        "Platform": "X (Twitter) Network",
-        "Registration API": "Email Taken (Active Account)"
+        "Key user IDs": pgp.names.join(", ") || "Not parsed",
+        ...(pgp.altEmails.length ? { "Other emails in matching key": pgp.altEmails.join(", ") } : {}),
       },
-      detail: `Confirmed active user registration on X (Twitter) associated with ${cleaned}.`,
-      icon: "x.com"
+      detail: "The address appears in a public OpenPGP key user ID. Key publication is a lead, not proof of the current mailbox controller's identity.",
+      icon: "keyserver.ubuntu.com",
+      httpStatus: pgp.status,
     });
-  }
-
-  // Platform: Spotify
-  if (spotify.registered) {
+  } else {
     platforms.push({
-      name: "SPOTIFY",
-      category: "Music & Streaming",
-      url: "https://spotify.com",
-      status: "candidate",
-      verified: true,
-      identifierDisplay: `Email: ${cleaned}`,
-      fieldsCount: 2,
-      extraFields: {
-        "Streaming Service": "Spotify Audio Network",
-        "Account Status": "Active Registered Subscriber",
-        ...(spotify.country ? { "Country": spotify.country } : {})
-      },
-      detail: `Active subscriber account confirmed on Spotify streaming platform.`,
-      icon: "spotify.com"
+      name: "OPENPGP KEYSERVER",
+      category: "Public cryptographic metadata",
+      url: `https://keyserver.ubuntu.com/pks/lookup?op=vindex&search=${encodeURIComponent(cleaned)}`,
+      status: pgp.status && pgp.status >= 200 && pgp.status < 300 ? "not_found" : "inconclusive",
+      verified: false,
+      confidence: "none",
+      detail: "No matching OpenPGP user ID was returned, or the keyserver was unavailable.",
+      icon: "keyserver.ubuntu.com",
+      httpStatus: pgp.status,
     });
   }
-
-  // Platform: WordPress
-  if (wpRegistered) {
-    platforms.push({
-      name: "WORDPRESS",
-      category: "Publishing & Web",
-      url: "https://wordpress.com",
-      status: "candidate",
-      verified: true,
-      identifierDisplay: `Email: ${cleaned}`,
-      fieldsCount: 2,
-      extraFields: {
-        "CMS Service": "WordPress.com Global",
-        "Auth Status": "Confirmed Registered User"
-      },
-      detail: `Confirmed author/user registration on WordPress.com publishing network.`,
-      icon: "wordpress.com"
-    });
-  }
-
-  // Platform: HaveIBeenPwned & Public Breach Check Link
-  platforms.push({
-    name: "PUBLIC BREACH AUDIT (HIBP)",
-    category: "Data Breach & Leaks",
-    url: `https://haveibeenpwned.com/unifiedsearch/${encodeURIComponent(cleaned)}`,
-    status: "candidate",
-    verified: true,
-    identifierDisplay: `Email: ${cleaned}`,
-    fieldsCount: 2,
-    extraFields: {
-      "HIBP Direct Search": `https://haveibeenpwned.com/unifiedsearch/${encodeURIComponent(cleaned)}`,
-      "DeHashed Pivot": `https://dehashed.com/search?query=${encodeURIComponent(cleaned)}`
-    },
-    detail: `Public breach corpus index links for ${cleaned} across HaveIBeenPwned and DeHashed.`,
-    icon: "haveibeenpwned.com"
-  });
 
   return {
-    email: cleaned,
-    username,
-    domain,
-    provider,
-    isFreeProvider,
-    isDisposable,
-    entities,
+    email: cleaned, username, domain, provider, isFreeProvider, isDisposable,
+    entities: {
+      names: Array.from(names),
+      profile_pictures: Array.from(avatars),
+      banners: [],
+      usernames: Array.from(usernames),
+      emails: Array.from(emails),
+      phones: [],
+    },
     platforms,
   };
 }
