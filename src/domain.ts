@@ -1,14 +1,30 @@
 /**
- * Domain & Infrastructure OSINT Intelligence Engine
- * Queries Cloudflare DoH (DNS-over-HTTPS) for authoritative records,
- * checks mail exchanges (MX), SPF / DMARC records, and security posture.
+ * Domain intelligence from live DNS-over-HTTPS, Certificate Transparency,
+ * and RDAP responses. No placeholder WHOIS or crt.sh cards are emitted.
  */
-
 export interface DnsAnswer {
   name: string;
   type: number;
   TTL: number;
   data: string;
+}
+interface DnsLookup {
+  answers: DnsAnswer[];
+  ok: boolean;
+  httpStatus: number | null;
+  error?: string;
+}
+interface EvidenceItem {
+  provider: string;
+  category: "domain" | "identity" | "security" | "code";
+  profile_url: string;
+  domain: string;
+  status: "observed" | "candidate" | "not_found" | "inconclusive";
+  http_status: number | null;
+  confidence: "high" | "medium" | "low";
+  detail: string;
+  checked_at: string;
+  extra_fields?: Record<string, string>;
 }
 
 export interface DomainResult {
@@ -22,175 +38,196 @@ export interface DomainResult {
   hasDmarc: boolean;
   dmarcPolicy: string;
   isCloudflare: boolean;
-  evidence: {
-    provider: string;
-    category: "domain" | "identity" | "security" | "code";
-    profile_url: string;
-    domain: string;
-    status: "candidate" | "not_found" | "inconclusive";
-    http_status: number;
-    confidence: "high" | "medium" | "low";
-    detail: string;
-    checked_at: string;
-  }[];
+  registeredAt?: string;
+  expiresAt?: string;
+  evidence: EvidenceItem[];
 }
 
-const RECORD_TYPES: Record<string, number> = {
-  A: 1,
-  NS: 2,
-  MX: 15,
-  TXT: 16,
-  AAAA: 28,
-};
+const DOMAIN_RE = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/i;
+const RECORD_TYPES: Record<string, number> = { A: 1, NS: 2, MX: 15, TXT: 16, AAAA: 28 };
 
-async function queryDns(domain: string, type: string): Promise<DnsAnswer[]> {
+async function queryDns(name: string, type: string): Promise<DnsLookup> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 4500);
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 4000);
-    const res = await fetch(`https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(domain)}&type=${type}`, {
+    const res = await fetch(`https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(name)}&type=${type}`, {
       headers: { Accept: "application/dns-json" },
       signal: controller.signal,
     });
+    if (!res.ok) return { answers: [], ok: false, httpStatus: res.status, error: `DNS provider HTTP ${res.status}` };
+    const data = await res.json() as { Answer?: DnsAnswer[] };
+    return { answers: Array.isArray(data.Answer) ? data.Answer : [], ok: true, httpStatus: res.status };
+  } catch (error) {
+    return { answers: [], ok: false, httpStatus: null, error: error instanceof Error ? error.message : "DNS lookup failed" };
+  } finally {
     clearTimeout(timeout);
-    if (!res.ok) return [];
-    const data: any = await res.json();
-    return data.Answer || [];
+  }
+}
+
+async function queryCertificateTransparency(domain: string): Promise<{ names: string[]; httpStatus: number | null; ok: boolean }> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 7000);
+  try {
+    const res = await fetch(`https://crt.sh/?q=%25.${encodeURIComponent(domain)}&output=json`, {
+      headers: { Accept: "application/json", "User-Agent": "ShadowTrace-OSINT/2.1" },
+      signal: controller.signal,
+    });
+    if (!res.ok) return { names: [], httpStatus: res.status, ok: false };
+    const rows = await res.json() as Array<{ name_value?: string }>;
+    const names = new Set<string>();
+    for (const row of Array.isArray(rows) ? rows.slice(0, 1000) : []) {
+      for (const raw of String(row.name_value || "").split(/\r?\n/)) {
+        const name = raw.trim().toLowerCase().replace(/^\*\./, "").replace(/\.$/, "");
+        if (name === domain || name.endsWith(`.${domain}`)) names.add(name);
+      }
+    }
+    return { names: Array.from(names).sort(), httpStatus: res.status, ok: true };
   } catch {
-    return [];
+    return { names: [], httpStatus: null, ok: false };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function queryRdap(domain: string): Promise<{ data: any | null; httpStatus: number | null; ok: boolean }> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 6500);
+  try {
+    const res = await fetch(`https://rdap.org/domain/${encodeURIComponent(domain)}`, {
+      headers: { Accept: "application/rdap+json, application/json", "User-Agent": "ShadowTrace-OSINT/2.1" },
+      signal: controller.signal,
+    });
+    if (!res.ok) return { data: null, httpStatus: res.status, ok: false };
+    return { data: await res.json(), httpStatus: res.status, ok: true };
+  } catch {
+    return { data: null, httpStatus: null, ok: false };
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
 export async function analyzeDomain(rawDomain: string): Promise<DomainResult> {
-  const domain = rawDomain.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+  const domain = rawDomain.trim().toLowerCase().replace(/\.$/, "");
+  if (!DOMAIN_RE.test(domain) || /\.(localhost|local|internal|test|invalid|example|onion)$/.test(domain)) {
+    throw new Error("Enter a valid public domain name without a URL path.");
+  }
   const checkedAt = new Date().toISOString();
-
-  // Concurrent DNS resolution via Cloudflare DoH
-  const [aRecords, aaaaRecords, mxRecords, txtRecords, nsRecords, dmarcRecords] = await Promise.all([
+  const [a, aaaa, mx, txt, ns, dmarc, ct, rdap] = await Promise.all([
     queryDns(domain, "A"),
     queryDns(domain, "AAAA"),
     queryDns(domain, "MX"),
     queryDns(domain, "TXT"),
     queryDns(domain, "NS"),
     queryDns(`_dmarc.${domain}`, "TXT"),
+    queryCertificateTransparency(domain),
+    queryRdap(domain),
   ]);
 
-  const ipAddresses = aRecords.map((r) => r.data);
-  const ipv6Addresses = aaaaRecords.map((r) => r.data);
-  const mailServers = mxRecords.map((r) => r.data);
-  const nameServers = nsRecords.map((r) => r.data.replace(/\.$/, ""));
-  const allTxt = txtRecords.map((r) => r.data.replace(/^"|"$/g, ""));
-  const allDmarcTxt = dmarcRecords.map((r) => r.data.replace(/^"|"$/g, ""));
+  const ipAddresses = a.answers.map(r => r.data);
+  const ipv6Addresses = aaaa.answers.map(r => r.data);
+  const mailServers = mx.answers.map(r => r.data.replace(/\.$/, ""));
+  const nameServers = ns.answers.map(r => r.data.replace(/\.$/, ""));
+  const txtRecords = txt.answers.map(r => r.data.replace(/^"|"$/g, ""));
+  const dmarcRecords = dmarc.answers.map(r => r.data.replace(/^"|"$/g, ""));
+  const spfRecord = txtRecords.find(r => /^v=spf1\b/i.test(r));
+  const dmarcRecord = dmarcRecords.find(r => /^v=DMARC1\b/i.test(r));
+  const dmarcPolicy = dmarcRecord?.match(/(?:^|;)\s*p=(none|quarantine|reject)/i)?.[1]?.toUpperCase() || "Not published";
+  const isCloudflare = nameServers.some(nsName => nsName.toLowerCase().endsWith("ns.cloudflare.com"));
 
-  const spfRecord = allTxt.find((t) => t.startsWith("v=spf1"));
-  const hasSpf = Boolean(spfRecord);
-  const dmarcRecord = allDmarcTxt.find((t) => t.startsWith("v=DMARC1"));
-  const hasDmarc = Boolean(dmarcRecord);
-
-  let dmarcPolicy = "None configured";
-  if (dmarcRecord) {
-    const match = dmarcRecord.match(/p=(none|quarantine|reject)/i);
-    dmarcPolicy = match ? match[1].toUpperCase() : "Configured";
-  }
-
-  const isCloudflare = nameServers.some((ns) => ns.toLowerCase().includes("cloudflare.com"));
-
-  const evidence: DomainResult["evidence"] = [];
-
-  // 1. IP Infrastructure
-  if (ipAddresses.length > 0) {
+  const evidence: EvidenceItem[] = [];
+  const addDns = (label: string, lookup: DnsLookup, values: string[], recordType: string) => {
+    if (!lookup.ok) {
+      evidence.push({
+        provider: `DNS ${recordType} lookup`, category: "domain", profile_url: "", domain,
+        status: "inconclusive", http_status: lookup.httpStatus, confidence: "low",
+        detail: lookup.error || `${label} lookup failed; no conclusion can be drawn.`, checked_at: checkedAt,
+      });
+      return;
+    }
     evidence.push({
-      provider: "Authoritative IPv4 Resolution",
-      category: "domain",
-      profile_url: `https://${domain}`,
-      domain,
-      status: "candidate",
-      http_status: 200,
-      confidence: "high",
-      detail: `Resolved IPv4: ${ipAddresses.join(", ")} ${isCloudflare ? "(Protected by Cloudflare Edge)" : ""}`,
+      provider: `DNS ${recordType} records`, category: "domain", profile_url: "", domain,
+      status: values.length ? "observed" : "not_found", http_status: lookup.httpStatus, confidence: "high",
+      detail: values.length ? `${label}: ${values.join(", ")}` : `The DNS query succeeded but returned no ${recordType} records.`,
+      checked_at: checkedAt,
+      ...(values.length ? { extra_fields: { "Records": values.join(", ") } } : {}),
+    });
+  };
+
+  addDns("IPv4 addresses", a, ipAddresses, "A");
+  addDns("IPv6 addresses", aaaa, ipv6Addresses, "AAAA");
+  addDns("Mail exchangers", mx, mailServers, "MX");
+  addDns("Nameservers", ns, nameServers, "NS");
+  addDns("TXT records", txt, txtRecords, "TXT");
+  addDns("DMARC TXT records", dmarc, dmarcRecords, "DMARC");
+
+  evidence.push({
+    provider: "Email authentication posture", category: "security", profile_url: `https://dmarcian.com/dmarc-inspector/?domain=${encodeURIComponent(domain)}`, domain,
+    status: txt.ok && dmarc.ok ? "observed" : "inconclusive",
+    http_status: txt.ok && dmarc.ok ? 200 : null,
+    confidence: txt.ok && dmarc.ok ? "high" : "low",
+    detail: txt.ok && dmarc.ok
+      ? `DNS observations: SPF ${spfRecord ? "published" : "not found"}; DMARC ${dmarcRecord ? `published (policy ${dmarcPolicy})` : "not found"}. Missing records are configuration observations, not proof of compromise.`
+      : "SPF/DMARC posture could not be fully checked because one or more DNS requests failed.",
+    checked_at: checkedAt,
+    extra_fields: {
+      "SPF": spfRecord || "Not found in successful TXT response",
+      "DMARC": dmarcRecord || "Not found in successful _dmarc TXT response",
+      "DMARC policy": dmarcPolicy,
+    },
+  });
+
+  if (ct.ok) {
+    evidence.push({
+      provider: "Certificate Transparency (crt.sh)", category: "security",
+      profile_url: `https://crt.sh/?q=%25.${encodeURIComponent(domain)}`, domain: "crt.sh",
+      status: ct.names.length ? "observed" : "not_found", http_status: ct.httpStatus, confidence: "high",
+      detail: ct.names.length ? `Certificate Transparency returned ${ct.names.length} matching DNS name(s).` : "Certificate Transparency query succeeded but returned no matching certificate names.",
+      checked_at: checkedAt,
+      ...(ct.names.length ? { extra_fields: { "Certificate names": ct.names.join(", ") } } : {}),
+    });
+  } else {
+    evidence.push({
+      provider: "Certificate Transparency (crt.sh)", category: "security",
+      profile_url: `https://crt.sh/?q=%25.${encodeURIComponent(domain)}`, domain: "crt.sh",
+      status: "inconclusive", http_status: ct.httpStatus, confidence: "low",
+      detail: "Certificate Transparency provider did not return a successful response; no conclusion can be drawn.",
       checked_at: checkedAt,
     });
   }
 
-  // 2. Mail Infrastructure (MX)
-  if (mailServers.length > 0) {
+  let registeredAt: string | undefined;
+  let expiresAt: string | undefined;
+  if (rdap.ok && rdap.data) {
+    const events = Array.isArray(rdap.data.events) ? rdap.data.events : [];
+    registeredAt = events.find((e: any) => /registration/i.test(e.eventAction))?.eventDate;
+    expiresAt = events.find((e: any) => /expiration/i.test(e.eventAction))?.eventDate;
     evidence.push({
-      provider: "Mail Exchanger (MX Records)",
-      category: "domain",
-      profile_url: `https://${domain}`,
-      domain,
-      status: "candidate",
-      http_status: 200,
-      confidence: "high",
-      detail: `Active Mail Routing: ${mailServers.slice(0, 3).join(", ")}`,
+      provider: "RDAP domain registration", category: "identity",
+      profile_url: `https://rdap.org/domain/${encodeURIComponent(domain)}`, domain: "rdap.org",
+      status: "observed", http_status: rdap.httpStatus, confidence: "high",
+      detail: `RDAP returned a domain registration object for ${domain}.`,
+      checked_at: checkedAt,
+      extra_fields: {
+        ...(rdap.data.ldhName ? { "Registered domain": String(rdap.data.ldhName) } : {}),
+        ...(registeredAt ? { "Registration date": registeredAt } : {}),
+        ...(expiresAt ? { "Expiry date": expiresAt } : {}),
+        ...(rdap.data.registrar?.name ? { "Registrar": String(rdap.data.registrar.name) } : {}),
+      },
+    });
+  } else {
+    evidence.push({
+      provider: "RDAP domain registration", category: "identity",
+      profile_url: `https://rdap.org/domain/${encodeURIComponent(domain)}`, domain: "rdap.org",
+      status: rdap.httpStatus === 404 ? "not_found" : "inconclusive",
+      http_status: rdap.httpStatus, confidence: "low",
+      detail: rdap.httpStatus === 404 ? "RDAP returned HTTP 404 for this domain." : "RDAP provider did not return a successful registration response.",
       checked_at: checkedAt,
     });
   }
-
-  // 3. Email Security Posture (SPF & DMARC)
-  evidence.push({
-    provider: "Email Spoofing Defense (SPF & DMARC)",
-    category: "security",
-    profile_url: `https://dmarcian.com/dmarc-inspector/?domain=${encodeURIComponent(domain)}`,
-    domain: "dmarcian.com",
-    status: hasSpf && hasDmarc ? "candidate" : "inconclusive",
-    http_status: 200,
-    confidence: "high",
-    detail: `SPF: ${hasSpf ? "Valid (" + spfRecord?.slice(0, 45) + "...)" : "MISSING"} · DMARC: ${hasDmarc ? "Enforced (Policy: " + dmarcPolicy + ")" : "MISSING"}`,
-    checked_at: checkedAt,
-  });
-
-  // 4. Authoritative Nameservers
-  if (nameServers.length > 0) {
-    evidence.push({
-      provider: "DNS Delegation (Nameservers)",
-      category: "domain",
-      profile_url: `https://${nameServers[0] || domain}`,
-      domain,
-      status: "candidate",
-      http_status: 200,
-      confidence: "high",
-      detail: `Authoritative Nameservers: ${nameServers.join(", ")}`,
-      checked_at: checkedAt,
-    });
-  }
-
-  // 5. SSL/TLS Certificate Transparency (crt.sh)
-  evidence.push({
-    provider: "SSL/TLS Certificate Logs (crt.sh)",
-    category: "security",
-    profile_url: `https://crt.sh/?q=${encodeURIComponent(domain)}`,
-    domain: "crt.sh",
-    status: "candidate",
-    http_status: 200,
-    confidence: "medium",
-    detail: `Search historical cryptographic certificates and discover unlisted subdomains for ${domain}.`,
-    checked_at: checkedAt,
-  });
-
-  // 6. WHOIS & RDAP Registration
-  evidence.push({
-    provider: "Domain WHOIS & RDAP Registry",
-    category: "identity",
-    profile_url: `https://whois.domaintools.com/${encodeURIComponent(domain)}`,
-    domain: "domaintools.com",
-    status: "candidate",
-    http_status: 200,
-    confidence: "medium",
-    detail: `Inspect registrar, creation date, expiry, and registrant contact records for ${domain}.`,
-    checked_at: checkedAt,
-  });
 
   return {
-    domain,
-    ipAddresses,
-    ipv6Addresses,
-    mailServers,
-    nameServers,
-    txtRecords: allTxt,
-    hasSpf,
-    hasDmarc,
-    dmarcPolicy,
-    isCloudflare,
-    evidence,
+    domain, ipAddresses, ipv6Addresses, mailServers, nameServers, txtRecords,
+    hasSpf: Boolean(spfRecord), hasDmarc: Boolean(dmarcRecord), dmarcPolicy,
+    isCloudflare, registeredAt, expiresAt, evidence,
   };
 }
