@@ -139,6 +139,19 @@ app.get("/", async (c) => {
   });
 });
 
+// OSINT Toolbox catalog endpoint
+app.get("/osint-tools.json", async (c) => {
+  if (c.env.ASSETS) {
+    try {
+      const assetRes = await c.env.ASSETS.fetch(c.req.raw);
+      if (assetRes.status === 200) return assetRes;
+    } catch {
+      // Fallback
+    }
+  }
+  return c.json({ error: "OSINT toolbox catalog requires static assets deployment" }, 404);
+});
+
 // Auth helper
 async function requireAuth(c: any): Promise<UserRow> {
   const authHeader = c.req.header("Authorization");

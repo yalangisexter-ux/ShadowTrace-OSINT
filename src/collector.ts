@@ -211,12 +211,30 @@ collectorManager.register({
   health: async () => ({ ok: true }),
   execute: async (query) => {
     const d = await analyzePhoneNumber(query);
-    return {
-      query: d.formatted,
-      type: "phone",
-      label: d.formatted,
-      entities: d.entities,
-      evidence: d.platforms.map(p => ({
+    const evidenceList: any[] = [
+      {
+        provider: "E.164 NUMBER FORMATTING & ROUTING",
+        category: "Telecom metadata",
+        profile_url: null,
+        domain: "itu.int",
+        status: "observed",
+        verified: true,
+        http_status: 200,
+        confidence: "high",
+        identity_name: d.country !== "Unknown" ? d.country : undefined,
+        identifier_display: `E.164: ${d.e164}`,
+        fields_count: 4,
+        extra_fields: {
+          "E.164 Number": d.e164,
+          "International Format": d.formatted,
+          "Country / Dial Plan": d.country,
+          ...(d.countryCode ? { "Country Calling Code": d.countryCode } : {}),
+          ...(d.timezone && d.timezone !== "Unknown" ? { "Timezone": d.timezone } : {}),
+        },
+        detail: `Verified E.164 format normalization: ${d.e164} (${d.country}). Number portability and subscriber ownership require authorized carrier or direct provider checks.`,
+        checked_at: new Date().toISOString(),
+      },
+      ...d.platforms.map(p => ({
         provider: p.name,
         category: p.category,
         profile_url: p.url || null,
@@ -232,6 +250,13 @@ collectorManager.register({
         detail: p.detail,
         checked_at: new Date().toISOString(),
       })),
+    ];
+    return {
+      query: d.formatted,
+      type: "phone",
+      label: d.formatted,
+      entities: d.entities,
+      evidence: evidenceList,
     };
   },
 });
@@ -263,8 +288,9 @@ collectorManager.register({
             discoveredNames.add(r.identity_name);
           }
         }
-        if (r.extra_fields?.Avatar) {
-          discoveredAvatars.add(r.extra_fields.Avatar);
+        const avatarUrl = r.extra_fields?.Avatar || r.extra_fields?.avatar || r.extra_fields?.["Avatar URL"];
+        if (avatarUrl && typeof avatarUrl === "string" && avatarUrl.startsWith("http")) {
+          discoveredAvatars.add(avatarUrl);
         }
       }
     }

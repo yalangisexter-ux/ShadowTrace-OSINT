@@ -61,6 +61,7 @@ const d1Emulator: D1Database = {
 };
 
 const htmlPath = path.resolve(process.cwd(), "frontend", "index.html");
+const toolsPath = path.resolve(process.cwd(), "frontend", "osint-tools.json");
 
 // Mount static frontend for local dev (live-reloaded on each request)
 app.get("/", (c) => {
@@ -70,6 +71,13 @@ app.get("/", (c) => {
 app.get("/index.html", (c) => {
   const content = fs.readFileSync(htmlPath, "utf-8");
   return c.html(content);
+});
+app.get("/osint-tools.json", (c) => {
+  if (fs.existsSync(toolsPath)) {
+    const content = fs.readFileSync(toolsPath, "utf-8");
+    return c.json(JSON.parse(content));
+  }
+  return c.json({ error: "Catalog not found" }, 404);
 });
 
 const env: Env = {
