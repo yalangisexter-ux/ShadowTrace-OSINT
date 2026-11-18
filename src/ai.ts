@@ -133,7 +133,7 @@ export function generateAISummary(
   const executiveSummary = [
     `### Evidence summary: ${query}`,
     "",
-    `ShadowTrace queried public sources for this ${searchType} indicator. It returned ${evidence.length} result(s): ${observations.length} observed technical fact(s), ${candidates.length} candidate profile lead(s), ${inconclusive.length} inconclusive check(s), and ${evidence.filter(e => e.status === "not_found").length} negative result(s).`,
+    `ShadowTrace ran deterministic, rule-based evidence synthesis (no generative AI model is configured) for this ${searchType} indicator. It returned ${evidence.length} result(s): ${observations.length} observed technical fact(s), ${candidates.length} candidate profile lead(s), ${inconclusive.length} inconclusive check(s), and ${evidence.filter(e => e.status === "not_found").length} negative result(s).`,
     "",
     isAssessed
       ? `A source-backed risk score of ${score}/100 was calculated (${threatLevel}). Review the supporting indicators before drawing conclusions.`
