@@ -63,34 +63,75 @@ const d1Emulator: D1Database = {
 const htmlPath = path.resolve(process.cwd(), "frontend", "index.html");
 const toolsPath = path.resolve(process.cwd(), "frontend", "osint-tools.json");
 
-// Mount static frontend for local dev (live-reloaded on each request)
-app.get("/", (c) => {
-  const content = fs.readFileSync(htmlPath, "utf-8");
-  return c.html(content);
-});
-app.get("/index.html", (c) => {
-  const content = fs.readFileSync(htmlPath, "utf-8");
-  return c.html(content);
-});
-app.get("/osint-tools.json", (c) => {
-  if (fs.existsSync(toolsPath)) {
-    const content = fs.readFileSync(toolsPath, "utf-8");
-    return c.json(JSON.parse(content));
+// Static assets emulator for local development
+const assetsEmulator = {
+  fetch: async (req: Request) => {
+    const url = new URL(req.url);
+    const pathname = url.pathname;
+    const targetFile = (pathname === "/" || pathname === "/index.html")
+      ? htmlPath
+      : path.resolve(process.cwd(), "frontend", pathname.replace(/^\/+/, ""));
+
+    if (fs.existsSync(targetFile) && fs.statSync(targetFile).isFile()) {
+      const ext = path.extname(targetFile).toLowerCase();
+      const mimeTypes: Record<string, string> = {
+        ".html": "text/html; charset=utf-8",
+        ".json": "application/json; charset=utf-8",
+        ".js": "application/javascript; charset=utf-8",
+        ".css": "text/css; charset=utf-8",
+        ".png": "image/png",
+        ".svg": "image/svg+xml",
+        ".ico": "image/x-icon",
+      };
+      const contentType = mimeTypes[ext] || "application/octet-stream";
+      const content = fs.readFileSync(targetFile);
+      return new Response(content, {
+        status: 200,
+        headers: { "Content-Type": contentType },
+      });
+    }
+    return new Response("Not Found", { status: 404 });
+  },
+};
+
+// Request logger middleware
+app.use("*", async (c, next) => {
+  const start = Date.now();
+  await next();
+  const ms = Date.now() - start;
+  const status = c.res.status;
+  const method = c.req.method;
+  const path = c.req.path;
+  if (!path.startsWith("/_") && path !== "/favicon.ico") {
+    console.log(`[${new Date().toLocaleTimeString()}] ${method} ${path} ${status} (${ms}ms)`);
   }
-  return c.json({ error: "Catalog not found" }, 404);
 });
 
 const env: Env = {
   DB: d1Emulator,
+  ASSETS: assetsEmulator as any,
   SECRET_KEY: "local-dev-secret-key-32-chars-long-for-jwt",
   APP_ENV: "development",
   ACCESS_TOKEN_MINUTES: "60",
 };
 
 const port = 8000;
-console.log(`ShadowTrace OSINT local server starting on http://localhost:${port}`);
 
-serve({
-  fetch: (req) => app.fetch(req, env),
-  port,
-});
+serve(
+  {
+    fetch: (req) => app.fetch(req, env),
+    port,
+  },
+  (info) => {
+    console.log(`\n=================================================================`);
+    console.log(`  ✅ ShadowTrace OSINT Server is LIVE and READY!`);
+    console.log(`  🌐 Web Application: http://localhost:${info.port}/`);
+    console.log(`  ⚡ API Health Check: http://localhost:${info.port}/healthz`);
+    console.log(`  🧰 OSINT Toolbox:    http://localhost:${info.port}/osint-tools.json`);
+    console.log(`  ---------------------------------------------------------------`);
+    console.log(`  * Actively listening for incoming browser & API requests.`);
+    console.log(`  * This process stays open as a background server (NOT hung).`);
+    console.log(`  * Press Ctrl+C in this terminal whenever you wish to stop it.`);
+    console.log(`=================================================================\n`);
+  }
+);
