@@ -632,11 +632,12 @@ export async function checkProvider(
       if (status === 200) {
         try {
           const arr: any = await response.json();
-          if (Array.isArray(arr) && arr.length > 0) {
+          const exactUser = Array.isArray(arr) ? arr.find((item: any) => String(item.username || "").toLowerCase() === username.toLowerCase()) : undefined;
+          if (exactUser) {
             isGitlabCandidate = true;
-            glId = String(arr[0].id);
-            glName = arr[0].name || username;
-            glAvatar = arr[0].avatar_url || "";
+            glId = String(exactUser.id);
+            glName = typeof exactUser.name === "string" ? exactUser.name : "";
+            glAvatar = typeof exactUser.avatar_url === "string" ? exactUser.avatar_url : "";
           } else {
             state = "not_found";
             confidence = "none";
@@ -668,7 +669,7 @@ export async function checkProvider(
       if (isGitlabCandidate) {
         state = "candidate";
         confidence = "high";
-        identityName = glName || username;
+        identityName = glName || undefined;
         identifierDisplay = `GitLab: @${username}`;
         fieldsCount = 2;
         extraFields = {
@@ -684,7 +685,7 @@ export async function checkProvider(
         const d: any = await response.json();
         state = "candidate";
         confidence = "high";
-        identityName = d.name || username;
+        identityName = typeof d.name === "string" ? d.name : undefined;
         identifierDisplay = `Chess.com: @${d.username || username}`;
         fieldsCount = 3;
         extraFields = {
@@ -707,7 +708,7 @@ export async function checkProvider(
         const d: any = await response.json();
         state = "candidate";
         confidence = "high";
-        identityName = d.username || username;
+        identityName = undefined;
         identifierDisplay = `Lichess: @${d.username || username}`;
         fieldsCount = 2;
         extraFields = {
@@ -728,7 +729,7 @@ export async function checkProvider(
         const d: any = await response.json();
         state = "candidate";
         confidence = "high";
-        identityName = d.username || username;
+        identityName = undefined;
         identifierDisplay = `Docker Hub: @${d.username || username}`;
         fieldsCount = 3;
         extraFields = {
@@ -756,7 +757,7 @@ export async function checkProvider(
           const d: any = JSON.parse(text);
           state = "candidate";
           confidence = "high";
-          identityName = username;
+          identityName = undefined;
           identifierDisplay = `Hacker News: @${username}`;
           fieldsCount = 2;
           extraFields = {
@@ -778,7 +779,7 @@ export async function checkProvider(
         if (d.them && d.them[0] && d.them[0].id) {
           state = "candidate";
           confidence = "high";
-          identityName = username;
+          identityName = undefined;
           identifierDisplay = `Keybase: ${username}`;
           fieldsCount = 2;
           extraFields = {
@@ -808,7 +809,7 @@ export async function checkProvider(
         if (payload && typeof payload === "object" && !Array.isArray(payload) && (typeof payload.id === "number" || (typeof payload.id === "string" && payload.id.length > 0)) && !payload.error) {
           state = "candidate";
           confidence = "high";
-          identityName = username;
+          identityName = undefined;
           identifierDisplay = `ArtStation: @${username}`;
           fieldsCount = 2;
           extraFields = {
@@ -834,7 +835,7 @@ export async function checkProvider(
         if (d && d.id) {
           state = "candidate";
           confidence = "high";
-          identityName = username;
+          identityName = undefined;
           identifierDisplay = `Glitch: @${username}`;
           fieldsCount = 2;
           extraFields = {
@@ -860,7 +861,7 @@ export async function checkProvider(
         if (d.data && d.data.name) {
           state = "candidate";
           confidence = "high";
-          identityName = d.data.name;
+          identityName = undefined;
           identifierDisplay = `u/${d.data.name}`;
           fieldsCount = 2;
           const redditIcon = d.data.icon_img ? d.data.icon_img.split("?")[0] : "";
