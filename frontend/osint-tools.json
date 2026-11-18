@@ -1,0 +1,295 @@
+{
+  "schema_version": 1,
+  "source": {
+    "name": "Z4nzu/hackingtool",
+    "url": "https://github.com/Z4nzu/hackingtool",
+    "branch": "master",
+    "commit": "c3a858990f1f772e5c59f10c51f1a7aeb888ef23",
+    "catalog": "docs/TOOLS.md",
+    "catalog_commit": "0a40b64a3eb954d8e24e904fbc7a493583965bd5",
+    "license": "MIT",
+    "attribution": "HackingTool by Mr.Z4nzu; catalog metadata adapted for discovery. See upstream LICENSE."
+  },
+  "notice": "This is a curated OSINT-focused subset, not a bundled copy of HackingTool or its third-party tools. External tools are reference links only; ShadowTrace does not install or execute them.",
+  "tools": [
+    {
+      "id": "st-domain",
+      "name": "Domain Intelligence",
+      "category": "Native ShadowTrace",
+      "tags": [
+        "domain",
+        "dns",
+        "rdap",
+        "certificate transparency"
+      ],
+      "description": "DNS A/AAAA/MX/NS/TXT/DMARC, certificate transparency and RDAP lookups.",
+      "status": "integrated",
+      "searchType": "domain",
+      "source": "ShadowTrace native collector",
+      "url": "https://github.com/yalangisexter-ux/ShadowTrace-OSINT"
+    },
+    {
+      "id": "st-ip",
+      "name": "IP Intelligence",
+      "category": "Native ShadowTrace",
+      "tags": [
+        "ip",
+        "geoip",
+        "ptr",
+        "shodan"
+      ],
+      "description": "Public GeoIP/network registration, reverse DNS and Shodan InternetDB indexed observations.",
+      "status": "integrated",
+      "searchType": "ip",
+      "source": "ShadowTrace native collector",
+      "url": "https://github.com/yalangisexter-ux/ShadowTrace-OSINT"
+    },
+    {
+      "id": "st-email",
+      "name": "Email Footprint",
+      "category": "Native ShadowTrace",
+      "tags": [
+        "email",
+        "mx",
+        "gravatar",
+        "pgp",
+        "github"
+      ],
+      "description": "MX infrastructure and exact-match public Gravatar, GitHub commit-author and OpenPGP signals where available.",
+      "status": "integrated",
+      "searchType": "email",
+      "source": "ShadowTrace native collector",
+      "url": "https://github.com/yalangisexter-ux/ShadowTrace-OSINT"
+    },
+    {
+      "id": "st-username",
+      "name": "Username Footprint",
+      "category": "Native ShadowTrace",
+      "tags": [
+        "username",
+        "profiles",
+        "osint"
+      ],
+      "description": "Provider-specific public profile checks with exact-match safeguards; results remain candidate leads.",
+      "status": "integrated",
+      "searchType": "username",
+      "source": "ShadowTrace native collector",
+      "url": "https://github.com/yalangisexter-ux/ShadowTrace-OSINT"
+    },
+    {
+      "id": "st-phone",
+      "name": "Phone Normalization",
+      "category": "Native ShadowTrace",
+      "tags": [
+        "phone",
+        "e164",
+        "normalization"
+      ],
+      "description": "Conservative phone normalization and country-code formatting; does not infer subscriber identity, carrier or private accounts.",
+      "status": "integrated",
+      "searchType": "phone",
+      "source": "ShadowTrace native collector",
+      "url": "https://github.com/yalangisexter-ux/ShadowTrace-OSINT"
+    },
+    {
+      "id": "st-crypto",
+      "name": "Crypto Address Signals",
+      "category": "Native ShadowTrace",
+      "tags": [
+        "crypto",
+        "bitcoin",
+        "ethereum"
+      ],
+      "description": "Address-format recognition and supported public-ledger observations; no wallet-owner attribution.",
+      "status": "integrated",
+      "searchType": "crypto",
+      "source": "ShadowTrace native collector",
+      "url": "https://github.com/yalangisexter-ux/ShadowTrace-OSINT"
+    },
+    {
+      "id": "st-metadata",
+      "name": "File Metadata Inspection",
+      "category": "Native ShadowTrace",
+      "tags": [
+        "metadata",
+        "forensics",
+        "hash"
+      ],
+      "description": "Inspects supplied text/data-URL bytes and embedded text indicators; no fabricated EXIF or GPS values.",
+      "status": "integrated",
+      "searchType": "metadata",
+      "source": "ShadowTrace native collector",
+      "url": "https://github.com/yalangisexter-ux/ShadowTrace-OSINT"
+    },
+    {
+      "id": "theharvester",
+      "name": "theHarvester",
+      "category": "OSINT & Recon",
+      "tags": [
+        "osint",
+        "email",
+        "subdomain-enum",
+        "recon"
+      ],
+      "description": "Collects publicly available names, emails, IPs, subdomains and URLs from supported public sources.",
+      "status": "reference",
+      "source": "HackingTool catalog",
+      "url": "https://github.com/laramies/theHarvester"
+    },
+    {
+      "id": "maigret",
+      "name": "Maigret",
+      "category": "OSINT & Recon",
+      "tags": [
+        "osint",
+        "username",
+        "lookup"
+      ],
+      "description": "Username search across public websites. Treat hits as candidate leads and manually validate them.",
+      "status": "reference",
+      "source": "HackingTool catalog",
+      "url": "https://github.com/soxoj/maigret"
+    },
+    {
+      "id": "spiderfoot",
+      "name": "SpiderFoot",
+      "category": "OSINT & Recon",
+      "tags": [
+        "osint",
+        "recon",
+        "automation"
+      ],
+      "description": "OSINT automation platform with a broad set of public-data modules.",
+      "status": "reference",
+      "source": "HackingTool catalog",
+      "url": "https://github.com/smicallef/spiderfoot"
+    },
+    {
+      "id": "reconspider",
+      "name": "ReconSpider",
+      "category": "OSINT & Recon",
+      "tags": [
+        "osint",
+        "recon",
+        "crawler"
+      ],
+      "description": "Open-source reconnaissance framework listed in the upstream HackingTool catalog.",
+      "status": "reference",
+      "source": "HackingTool catalog",
+      "url": "https://github.com/bhavsec/reconspider"
+    },
+    {
+      "id": "amass",
+      "name": "OWASP Amass",
+      "category": "Domain Recon",
+      "tags": [
+        "osint",
+        "subdomain-enum",
+        "dns"
+      ],
+      "description": "Attack-surface mapping and subdomain discovery. Run only for domains you own or are authorized to assess.",
+      "status": "reference",
+      "source": "HackingTool catalog",
+      "url": "https://github.com/owasp-amass/amass"
+    },
+    {
+      "id": "subfinder",
+      "name": "Subfinder",
+      "category": "Domain Recon",
+      "tags": [
+        "osint",
+        "subdomain-enum",
+        "dns"
+      ],
+      "description": "Passive subdomain discovery from public sources; scope queries to authorized domains.",
+      "status": "reference",
+      "source": "HackingTool catalog",
+      "url": "https://github.com/projectdiscovery/subfinder"
+    },
+    {
+      "id": "holehe",
+      "name": "Holehe",
+      "category": "Email OSINT",
+      "tags": [
+        "osint",
+        "email",
+        "lookup"
+      ],
+      "description": "Email-to-service presence checks. Not integrated; privacy-sensitive and may be rate-limited by providers.",
+      "status": "reference",
+      "source": "HackingTool catalog",
+      "url": "https://github.com/megadose/holehe"
+    },
+    {
+      "id": "dnstwist",
+      "name": "dnstwist",
+      "category": "Domain Recon",
+      "tags": [
+        "osint",
+        "dns",
+        "phishing"
+      ],
+      "description": "Domain permutation and phishing-lookalike monitoring for defensive brand protection.",
+      "status": "reference",
+      "source": "HackingTool catalog",
+      "url": "https://github.com/elceef/dnstwist"
+    },
+    {
+      "id": "exiftool",
+      "name": "ExifTool",
+      "category": "Forensics",
+      "tags": [
+        "forensics",
+        "metadata",
+        "image",
+        "document"
+      ],
+      "description": "Reads metadata from local images, documents and media files. Not executed by the Cloudflare Worker.",
+      "status": "reference",
+      "source": "HackingTool catalog",
+      "url": "https://exiftool.org/"
+    },
+    {
+      "id": "wigle",
+      "name": "WiGLE",
+      "category": "Wireless OSINT",
+      "tags": [
+        "wireless",
+        "osint",
+        "lookup"
+      ],
+      "description": "Public wireless-network mapping service. Use only for legitimate research and privacy-respecting analysis.",
+      "status": "reference",
+      "source": "HackingTool catalog",
+      "url": "https://wigle.net/"
+    },
+    {
+      "id": "gitleaks",
+      "name": "Gitleaks",
+      "category": "Code & Exposure",
+      "tags": [
+        "git-secrets",
+        "credentials",
+        "reporting"
+      ],
+      "description": "Scans repositories for accidentally committed secrets; scan only repositories you own or are authorized to review.",
+      "status": "reference",
+      "source": "HackingTool catalog",
+      "url": "https://github.com/gitleaks/gitleaks"
+    },
+    {
+      "id": "trufflehog",
+      "name": "TruffleHog",
+      "category": "Code & Exposure",
+      "tags": [
+        "git-secrets",
+        "credentials",
+        "recon"
+      ],
+      "description": "Detects exposed credentials and secrets in source-control history and supported data sources.",
+      "status": "reference",
+      "source": "HackingTool catalog",
+      "url": "https://github.com/trufflesecurity/trufflehog"
+    }
+  ]
+}
