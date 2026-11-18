@@ -8,6 +8,7 @@ import {
   extractProfileSignals,
   isSoft404Page,
   isAllowedFinalUrl,
+  profilePathMatchesUsername,
 } from "../src/providers.ts";
 import {
   hashPassword,
@@ -413,7 +414,6 @@ test("knowledge graph labels email and phone values as indicators, not recovery 
 
 
 test("HTML username matches require both exact page metadata and exact final profile path", async () => {
-  const { profilePathMatchesUsername } = await import("../src/providers.ts");
   assert.equal(profilePathMatchesUsername("https://codeberg.org/octocat", "octocat", "codeberg.org"), true);
   assert.equal(profilePathMatchesUsername("https://codeberg.org/octocat/", "octocat", "codeberg.org"), true);
   assert.equal(profilePathMatchesUsername("https://codeberg.org/octocat-fan", "octocat", "codeberg.org"), false);
