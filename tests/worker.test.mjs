@@ -409,3 +409,15 @@ test("knowledge graph labels email and phone values as indicators, not recovery 
   assert.equal(relationships.includes("recovery_email"), false);
   assert.equal(relationships.includes("recovery_phone"), false);
 });
+
+
+test("HTML username matches require both exact page metadata and exact final profile path", async () => {
+  const { profilePathMatchesUsername } = await import("../src/providers.ts");
+  assert.equal(profilePathMatchesUsername("https://codeberg.org/octocat", "octocat", "codeberg.org"), true);
+  assert.equal(profilePathMatchesUsername("https://codeberg.org/octocat/", "octocat", "codeberg.org"), true);
+  assert.equal(profilePathMatchesUsername("https://codeberg.org/octocat-fan", "octocat", "codeberg.org"), false);
+  assert.equal(profilePathMatchesUsername("https://codeberg.org/", "octocat", "codeberg.org"), false);
+  assert.equal(profilePathMatchesUsername("https://other.example/octocat", "octocat", "codeberg.org"), false);
+  assert.equal(profilePathMatchesUsername("https://octocat.substack.com", "octocat", "substack.com"), true);
+  assert.equal(profilePathMatchesUsername("https://someone-else.substack.com", "octocat", "substack.com"), false);
+});
