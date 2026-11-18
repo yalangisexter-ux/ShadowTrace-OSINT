@@ -636,6 +636,153 @@ main {
   border-radius: 6px;
 }
 .history-item:hover { background: rgba(255, 255, 255, 0.04); }
+
+/* AI Intelligence Briefing & Threat Matrix Styles */
+.ai-briefing-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 24px;
+  margin-bottom: 20px;
+}
+.ai-header-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(37, 99, 235, 0.12);
+  border: 1px solid rgba(37, 99, 235, 0.3);
+  color: var(--cyan);
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-family: var(--mono);
+  font-weight: 600;
+  margin-bottom: 14px;
+}
+.ai-summary-text {
+  font-size: 14.5px;
+  line-height: 1.65;
+  color: #e5e7eb;
+  margin-bottom: 20px;
+}
+.ai-radar-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.radar-card {
+  background: #111116;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+}
+.radar-score-bar {
+  height: 8px;
+  border-radius: 4px;
+  background: #272734;
+  overflow: hidden;
+  margin: 10px 0;
+}
+.radar-score-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.4s ease;
+}
+.timeline-list {
+  position: relative;
+  padding-left: 20px;
+  border-left: 2px solid var(--border);
+  margin-top: 14px;
+}
+.timeline-item {
+  position: relative;
+  margin-bottom: 18px;
+}
+.timeline-item::before {
+  content: '';
+  position: absolute;
+  left: -26px;
+  top: 4px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--cyan);
+  border: 2px solid var(--bg);
+}
+.timeline-time {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.timeline-event {
+  font-size: 13px;
+  font-weight: 500;
+  color: #f3f4f6;
+  margin-top: 2px;
+}
+.pivots-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+}
+.pivot-chip {
+  background: rgba(37, 99, 235, 0.12);
+  border: 1px solid rgba(37, 99, 235, 0.35);
+  border-radius: 8px;
+  padding: 8px 14px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  transition: all 0.15s;
+}
+.pivot-chip:hover {
+  background: rgba(37, 99, 235, 0.25);
+  border-color: var(--cyan);
+  transform: translateY(-1px);
+}
+.pivot-label {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--cyan);
+}
+.pivot-reason {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+.matrix-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+}
+.matrix-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+}
+.matrix-card-title {
+  font-size: 12px;
+  font-family: var(--mono);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 8px;
+}
+.matrix-card-val {
+  font-size: 16px;
+  font-weight: 700;
+  color: #fff;
+}
+.matrix-card-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 6px;
+  line-height: 1.45;
+}
 </style>
 </head>
 <body>
@@ -664,6 +811,9 @@ main {
       <button class="nav-tab-btn" data-type="email" onclick="setSearchType('email')">✉ Email</button>
       <button class="nav-tab-btn active" data-type="phone" onclick="setSearchType('phone')">📞 Phone</button>
       <button class="nav-tab-btn" data-type="domain" onclick="setSearchType('domain')">🌐 Domain</button>
+      <button class="nav-tab-btn" data-type="ip" onclick="setSearchType('ip')">📡 IP</button>
+      <button class="nav-tab-btn" data-type="crypto" onclick="setSearchType('crypto')">🪙 Crypto</button>
+      <button class="nav-tab-btn" data-type="metadata" onclick="setSearchType('metadata')">🔍 Forensics</button>
     </div>
   </div>
 
@@ -700,9 +850,12 @@ main {
   <!-- Presets -->
   <div class="presets-row">
     <span>Quick Targets:</span>
+    <span class="preset-tag" onclick="quickFill('+919876543210', 'phone')">📞 +91 98765 43210</span>
     <span class="preset-tag" onclick="quickFill('torvalds', 'username')">@ torvalds</span>
     <span class="preset-tag" onclick="quickFill('torvalds@linux-foundation.org', 'email')">✉ torvalds@linux-foundation.org</span>
     <span class="preset-tag" onclick="quickFill('cloudflare.com', 'domain')">🌐 cloudflare.com</span>
+    <span class="preset-tag" onclick="quickFill('1.1.1.1', 'ip')">📡 1.1.1.1</span>
+    <span class="preset-tag" onclick="quickFill('1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa', 'crypto')">🪙 1A1zP1eP... (Satoshi)</span>
   </div>
 
   <!-- Progress Bar -->
@@ -739,12 +892,16 @@ main {
         
         <div class="view-btn-group">
           <button id="viewGridBtn" class="view-toggle-btn active" onclick="switchView('grid')">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+            🎴 Platforms
           </button>
           <button id="viewGraphBtn" class="view-toggle-btn" onclick="switchView('graph')">🕸️ Graph</button>
+          <button id="viewAiBtn" class="view-toggle-btn" onclick="switchView('ai')">🤖 AI Briefing</button>
+          <button id="viewMatrixBtn" class="view-toggle-btn" onclick="switchView('matrix')">⚡ Threat Matrix</button>
         </div>
 
         <button class="outline" onclick="exportData('markdown')">📄 Markdown</button>
+        <button class="outline" onclick="exportData('csv')">📊 CSV</button>
+        <button class="outline" onclick="exportData('html')">🌐 HTML Report</button>
         <button class="outline" onclick="exportData('json')">{ } JSON</button>
         <button class="outline" onclick="exportExecutiveDossier()">📋 Dossier</button>
       </div>
@@ -754,14 +911,57 @@ main {
     <div id="graphContainer" class="hidden">
       <canvas id="graphCanvas"></canvas>
       <div class="graph-legend">
-        <span><span class="legend-dot" style="background:#2563eb"></span> Target Node</span>
-        <span><span class="legend-dot" style="background:#10b981"></span> Verified Identity</span>
-        <span><span class="legend-dot" style="background:#38bdf8"></span> Discovered Anchor</span>
+        <span><span class="legend-dot" style="background:#2563eb"></span> Target</span>
+        <span><span class="legend-dot" style="background:#22c55e"></span> Platform</span>
+        <span><span class="legend-dot" style="background:#38bdf8"></span> Email</span>
+        <span><span class="legend-dot" style="background:#f59e0b"></span> Phone</span>
+        <span><span class="legend-dot" style="background:#10b981"></span> Network / IP</span>
+        <span><span class="legend-dot" style="background:#f97316"></span> Crypto</span>
       </div>
     </div>
 
     <!-- Platform Cards Grid (Matches fingerprint.to layout) -->
     <div id="platformsGrid" class="platforms-grid"></div>
+
+    <!-- AI Briefing Container -->
+    <div id="aiContainer" class="hidden">
+      <div class="ai-briefing-card">
+        <div class="ai-header-badge">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a10 10 0 1 0 10 10H12V2z"/></svg>
+          AI EXECUTIVE INTELLIGENCE DOSSIER
+        </div>
+        <div id="aiExecutiveSummary" class="ai-summary-text"></div>
+        
+        <div class="ai-radar-grid">
+          <div class="radar-card">
+            <div style="font-size:12px;color:var(--text-muted);font-family:var(--mono);">THREAT RADAR SCORE</div>
+            <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:6px;">
+              <span id="aiRadarScore" style="font-size:26px;font-weight:800;color:var(--cyan);">0/100</span>
+              <span id="aiRadarLevel" style="font-family:var(--mono);font-size:12px;font-weight:700;">LOW</span>
+            </div>
+            <div class="radar-score-bar">
+              <div id="aiRadarFill" class="radar-score-fill" style="width:0%;background:var(--cyan);"></div>
+            </div>
+            <div id="aiRiskFactors" style="font-size:11.5px;color:var(--text-muted);margin-top:8px;"></div>
+          </div>
+
+          <div class="radar-card">
+            <div style="font-size:12px;color:var(--text-muted);font-family:var(--mono);">RECOMMENDED PIVOTS</div>
+            <div id="aiRecommendedPivots" class="pivots-container"></div>
+          </div>
+        </div>
+
+        <div style="margin-top:16px;">
+          <div style="font-size:12px;color:var(--text-muted);font-family:var(--mono);text-transform:uppercase;">Chronological Sighting Timeline</div>
+          <div id="aiTimelineList" class="timeline-list"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Threat Matrix Container -->
+    <div id="matrixContainer" class="hidden">
+      <div id="matrixGrid" class="matrix-grid"></div>
+    </div>
   </div>
 
   <!-- History Section -->
@@ -821,6 +1021,9 @@ let currentQuery = "";
 let currentSearchType = "phone";
 let currentView = "grid";
 let filterQuery = "";
+let currentGraph = null;
+let currentAI = null;
+let currentThreatMatrix = null;
 
 const el = (id) => document.getElementById(id);
 
@@ -957,6 +1160,15 @@ function setSearchType(type) {
   } else if (type === "domain") {
     prefix.classList.add("hidden");
     input.placeholder = "cloudflare.com";
+  } else if (type === "ip") {
+    prefix.classList.add("hidden");
+    input.placeholder = "1.1.1.1 or 8.8.8.8";
+  } else if (type === "crypto") {
+    prefix.classList.add("hidden");
+    input.placeholder = "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa or 0x...";
+  } else if (type === "metadata") {
+    prefix.classList.add("hidden");
+    input.placeholder = "Paste image text, metadata, or data: URL...";
   }
 }
 
@@ -1027,6 +1239,9 @@ function renderSearchResults(data) {
   currentResults = data.evidence || [];
   currentEntities = data.entities || {};
   currentRunId = data.id;
+  currentGraph = data.graph || null;
+  currentAI = data.ai || null;
+  currentThreatMatrix = data.threat_matrix || null;
 
   const matches = currentResults.filter(e => e.status === "candidate").length;
   el("foundProfilesCount").textContent = matches;
@@ -1037,11 +1252,13 @@ function renderSearchResults(data) {
 
   renderEntitiesDrawer(currentEntities);
   renderPlatformCards();
+  renderAIBriefing();
+  renderThreatMatrix();
 
   el("resultsArea").classList.remove("hidden");
 
   if (currentView === "graph") {
-    initOrUpdateGraph();
+    setTimeout(initOrUpdateGraph, 50);
   }
 }
 
@@ -1225,18 +1442,123 @@ function toggleExtraFields(idx) {
 
 function switchView(view) {
   currentView = view;
+  el("viewGridBtn").classList.toggle("active", view === "grid");
+  el("viewGraphBtn").classList.toggle("active", view === "graph");
+  el("viewAiBtn").classList.toggle("active", view === "ai");
+  el("viewMatrixBtn").classList.toggle("active", view === "matrix");
+
+  el("platformsGrid").classList.toggle("hidden", view !== "grid");
+  el("graphContainer").classList.toggle("hidden", view !== "graph");
+  el("aiContainer").classList.toggle("hidden", view !== "ai");
+  el("matrixContainer").classList.toggle("hidden", view !== "matrix");
+
   if (view === "graph") {
-    el("viewGraphBtn").classList.add("active");
-    el("viewGridBtn").classList.remove("active");
-    el("graphContainer").classList.remove("hidden");
-    el("platformsGrid").classList.add("hidden");
-    initOrUpdateGraph();
-  } else {
-    el("viewGridBtn").classList.add("active");
-    el("viewGraphBtn").classList.remove("active");
-    el("graphContainer").classList.add("hidden");
-    el("platformsGrid").classList.remove("hidden");
+    setTimeout(initOrUpdateGraph, 60);
   }
+}
+
+function renderAIBriefing() {
+  if (!currentAI) return;
+  el("aiExecutiveSummary").textContent = currentAI.executive_summary || "Automated intelligence analysis complete.";
+
+  const radar = currentAI.threat_radar || {};
+  const score = radar.score || 0;
+  const level = radar.level || "LOW";
+  el("aiRadarScore").textContent = score + "/100";
+  el("aiRadarLevel").textContent = level;
+
+  const scoreFill = el("aiRadarFill");
+  scoreFill.style.width = Math.min(100, Math.max(0, score)) + "%";
+  if (score >= 70) {
+    scoreFill.style.background = "var(--red)";
+    el("aiRadarLevel").style.color = "var(--red)";
+  } else if (score >= 40) {
+    scoreFill.style.background = "var(--amber)";
+    el("aiRadarLevel").style.color = "var(--amber)";
+  } else {
+    scoreFill.style.background = "var(--cyan)";
+    el("aiRadarLevel").style.color = "var(--cyan)";
+  }
+
+  const factors = radar.factors || [];
+  el("aiRiskFactors").innerHTML = factors.length
+    ? factors.map(f => `<span style="display:inline-block;margin-right:6px;margin-bottom:4px;padding:2px 6px;border-radius:4px;background:rgba(255,255,255,0.06);font-family:var(--mono);">• ${escapeHtml(f)}</span>`).join("")
+    : "No elevated risk factors detected.";
+
+  // Recommended Pivots
+  const pivots = currentAI.recommended_pivots || [];
+  const pivotsContainer = el("aiRecommendedPivots");
+  if (!pivots.length) {
+    pivotsContainer.innerHTML = '<span style="font-size:12px;color:var(--text-muted)">No active pivot recommendations.</span>';
+  } else {
+    pivotsContainer.innerHTML = pivots.map(p => `
+      <div class="pivot-chip" onclick="quickFill('${escapeHtml(p.query)}', '${escapeHtml(p.type)}')">
+        <span class="pivot-label">➔ ${escapeHtml(p.label)}</span>
+        <span class="pivot-reason">${escapeHtml(p.reason)}</span>
+      </div>
+    `).join("");
+  }
+
+  // Timeline
+  const timeline = currentAI.timeline || [];
+  const timelineList = el("aiTimelineList");
+  if (!timeline.length) {
+    timelineList.innerHTML = '<div style="font-size:12px;color:var(--text-muted)">No chronological timeline events recorded.</div>';
+  } else {
+    timelineList.innerHTML = timeline.map(item => `
+      <div class="timeline-item">
+        <div class="timeline-time">${escapeHtml(item.timestamp || 'Discovered')} · <span style="color:var(--cyan)">${escapeHtml(item.provider)}</span></div>
+        <div class="timeline-event">${escapeHtml(item.event)}</div>
+      </div>
+    `).join("");
+  }
+}
+
+function renderThreatMatrix() {
+  const container = el("matrixGrid");
+  if (!container) return;
+
+  const matrix = currentThreatMatrix || {};
+  const score = matrix.overall_threat_score ?? matrix.score ?? 0;
+  const level = matrix.level || (score >= 50 ? "ELEVATED" : "LOW");
+  const exposureSummary = matrix.exposure_summary || "Reconnaissance complete";
+  const credentialRisk = matrix.credential_reuse_risk || "Not established";
+  const phishingSurface = matrix.phishing_surface || "Moderate";
+
+  const cards = [
+    `
+      <div class="matrix-card">
+        <div class="matrix-card-title">Threat Classification</div>
+        <div class="matrix-card-val" style="color:${score >= 50 ? 'var(--red)' : 'var(--cyan)'}">${escapeHtml(level)} (${score}/100)</div>
+        <div class="matrix-card-desc">${escapeHtml(exposureSummary)}</div>
+      </div>
+    `,
+    `
+      <div class="matrix-card">
+        <div class="matrix-card-title">Credential Exposure Risk</div>
+        <div class="matrix-card-val" style="color:var(--amber)">${escapeHtml(credentialRisk)}</div>
+        <div class="matrix-card-desc">Evaluated across public leak indexes & breach signatures without password transmission.</div>
+      </div>
+    `,
+    `
+      <div class="matrix-card">
+        <div class="matrix-card-title">Phishing & Attack Surface</div>
+        <div class="matrix-card-val">${escapeHtml(phishingSurface)}</div>
+        <div class="matrix-card-desc">Direct communications surface mapped to public messaging and recovery anchors.</div>
+      </div>
+    `,
+    `
+      <div class="matrix-card">
+        <div class="matrix-card-title">Zero-Knowledge Audit</div>
+        <div class="matrix-card-val" style="color:var(--green)">k-Anonymity Verified</div>
+        <div class="matrix-card-desc">
+          <button class="outline" style="margin-top:8px;font-size:12px;padding:4px 10px;" onclick="openExposureModal()">Audit Password Leaks</button>
+        </div>
+      </div>
+    `
+  ];
+
+  container.innerHTML = cards.join("");
 }
 
 // Interactive Force-Directed Canvas Graph Visualizer
@@ -1244,9 +1566,24 @@ let graphAnimationId = null;
 let graphNodes = [];
 let graphEdges = [];
 
+const TYPE_COLORS = {
+  target: "#2563eb",
+  username: "#a855f7",
+  email: "#38bdf8",
+  phone: "#f59e0b",
+  domain: "#6366f1",
+  ip: "#10b981",
+  crypto: "#f97316",
+  location: "#14b8a6",
+  carrier: "#ec4899",
+  platform: "#22c55e",
+  metadata: "#f43f5e"
+};
+
 function initOrUpdateGraph() {
   const canvas = el("graphCanvas");
   const container = el("graphContainer");
+  if (!canvas || !container) return;
   const rect = container.getBoundingClientRect();
   canvas.width = rect.width || 800;
   canvas.height = rect.height || 560;
@@ -1255,36 +1592,80 @@ function initOrUpdateGraph() {
   graphNodes = [];
   graphEdges = [];
 
-  const rootNode = {
-    id: "root",
-    label: currentQuery,
-    x: canvas.width / 2,
-    y: canvas.height / 2,
-    vx: 0,
-    vy: 0,
-    radius: 22,
-    color: "#2563eb"
-  };
-  graphNodes.push(rootNode);
+  if (currentGraph && currentGraph.nodes && currentGraph.nodes.length > 0) {
+    const nodeMap = new Map();
+    const count = currentGraph.nodes.length;
+    currentGraph.nodes.forEach((n, idx) => {
+      const isTarget = n.type === "target" || n.id.startsWith("target:");
+      const angle = (idx / Math.max(count, 1)) * Math.PI * 2;
+      const dist = isTarget ? 0 : 130 + (idx % 4) * 35;
+      const gNode = {
+        id: n.id,
+        label: n.label,
+        sub: n.category || "",
+        details: n.details || "",
+        type: n.type,
+        x: canvas.width / 2 + Math.cos(angle) * dist,
+        y: canvas.height / 2 + Math.sin(angle) * dist,
+        vx: 0,
+        vy: 0,
+        radius: isTarget ? 22 : 13,
+        color: TYPE_COLORS[n.type] || "#10b981",
+        isTarget: isTarget
+      };
+      graphNodes.push(gNode);
+      nodeMap.set(n.id, gNode);
+    });
 
-  const candidates = currentResults.filter(e => e.status === "candidate");
-  candidates.forEach((item, idx) => {
-    const angle = (idx / candidates.length) * Math.PI * 2;
-    const dist = 140 + (idx % 3) * 35;
-    const leaf = {
-      id: "leaf_" + idx,
-      label: item.provider,
-      sub: item.identity_name || "",
-      x: rootNode.x + Math.cos(angle) * dist,
-      y: rootNode.y + Math.sin(angle) * dist,
+    if (currentGraph.edges && currentGraph.edges.length > 0) {
+      currentGraph.edges.forEach(e => {
+        const src = nodeMap.get(e.source);
+        const tgt = nodeMap.get(e.target);
+        if (src && tgt) {
+          graphEdges.push({
+            source: src,
+            target: tgt,
+            label: e.label || e.relationship,
+            length: 120 + Math.random() * 40
+          });
+        }
+      });
+    }
+  } else {
+    // Fallback graph from currentResults
+    const rootNode = {
+      id: "root",
+      label: currentQuery,
+      x: canvas.width / 2,
+      y: canvas.height / 2,
       vx: 0,
       vy: 0,
-      radius: 12,
-      color: "#10b981"
+      radius: 22,
+      color: "#2563eb",
+      isTarget: true
     };
-    graphNodes.push(leaf);
-    graphEdges.push({ source: rootNode, target: leaf, length: dist });
-  });
+    graphNodes.push(rootNode);
+
+    const candidates = currentResults.filter(e => e.status === "candidate");
+    candidates.forEach((item, idx) => {
+      const angle = (idx / Math.max(candidates.length, 1)) * Math.PI * 2;
+      const dist = 140 + (idx % 3) * 35;
+      const leaf = {
+        id: "leaf_" + idx,
+        label: item.provider,
+        sub: item.identity_name || "",
+        x: rootNode.x + Math.cos(angle) * dist,
+        y: rootNode.y + Math.sin(angle) * dist,
+        vx: 0,
+        vy: 0,
+        radius: 12,
+        color: "#22c55e",
+        isTarget: false
+      };
+      graphNodes.push(leaf);
+      graphEdges.push({ source: rootNode, target: leaf, length: dist });
+    });
+  }
 
   if (graphAnimationId) cancelAnimationFrame(graphAnimationId);
 
@@ -1300,7 +1681,7 @@ function initOrUpdateGraph() {
         const dy = b.y - a.y;
         const d = Math.sqrt(dx * dx + dy * dy) || 1;
         if (d < 140) {
-          const force = (140 - d) / d * 0.06;
+          const force = ((140 - d) / d) * 0.06;
           a.vx -= dx * force;
           a.vy -= dy * force;
           b.vx += dx * force;
@@ -1321,7 +1702,7 @@ function initOrUpdateGraph() {
     });
 
     graphNodes.forEach(n => {
-      if (n.id === "root") {
+      if (n.isTarget) {
         n.x += (canvas.width / 2 - n.x) * 0.08;
         n.y += (canvas.height / 2 - n.y) * 0.08;
       } else {
@@ -1336,7 +1717,7 @@ function initOrUpdateGraph() {
 
     // Draw lines
     ctx.lineWidth = 1;
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.08)";
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.12)";
     graphEdges.forEach(e => {
       ctx.beginPath();
       ctx.moveTo(e.source.x, e.source.y);
@@ -1351,8 +1732,13 @@ function initOrUpdateGraph() {
       ctx.fillStyle = n.color;
       ctx.fill();
 
+      // subtle glow around node
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.25)";
+      ctx.stroke();
+
       ctx.fillStyle = "#ffffff";
-      ctx.font = n.id === "root" ? "bold 12px Inter" : "11px Inter";
+      ctx.font = n.isTarget ? "bold 12px Inter" : "11px Inter";
       ctx.textAlign = "center";
       ctx.fillText(n.label, n.x, n.y + n.radius + 12);
 
@@ -1400,7 +1786,7 @@ function exportExecutiveDossier() {
       <h1>ShadowTrace Executive Intelligence Dossier</h1>
       <p style="color:#64748b;font-size:13px;">Classification: Open-Source Footprint Discovery</p>
       <table class="meta-table">
-        <tr><td class="lbl">Target Query</td><td><strong>${escapeHtml(currentQuery)}</strong></td><td class="lbl">Target Type</td><td>${escapeHtml(currentSearchType.toUpperCase())}</td></tr>
+        <tr><td class="lbl">Target Query</td><td><strong>${escapeHtml(currentQuery)}</strong></td><td class="lbl">Target Type</td><td>${escapeHtml((currentSearchType || '').toUpperCase())}</td></tr>
         <tr><td class="lbl">Investigation ID</td><td>#${currentRunId || 'LIVE'}</td><td class="lbl">Date</td><td>${new Date().toISOString()}</td></tr>
         <tr><td class="lbl">Discovered Identities</td><td colspan="3">${currentEntities ? escapeHtml((currentEntities.names || []).join(", ")) : '—'}</td></tr>
       </table>
@@ -1431,38 +1817,134 @@ function exportExecutiveDossier() {
 async function exportData(format) {
   if (!currentResults.length) return;
   const matches = currentResults.filter(e => e.status === "candidate");
+  const filenameBase = `shadowtrace_${(currentQuery || "investigation").replace(/\W/g, '_')}`;
 
   if (format === "markdown") {
     const lines = [
       `# ShadowTrace OSINT Investigation Report`,
-      `**Target:** \`${currentQuery}\` (${currentSearchType.toUpperCase()})`,
-      `**Run ID:** #${currentRunId || 'LIVE'}`,
+      `**Target:** \`${currentQuery}\` (${(currentSearchType || '').toUpperCase()})`,
+      `**Investigation ID:** #${currentRunId || 'LIVE'}`,
       `**Timestamp:** ${new Date().toISOString()}`,
       `**Discovered Names:** ${(currentEntities?.names || []).join(', ') || 'N/A'}`,
       `**Discovered Phones:** ${(currentEntities?.phones || []).join(', ') || 'N/A'}`,
       `**Discovered Emails:** ${(currentEntities?.emails || []).join(', ') || 'N/A'}`,
       `**Profiles Found:** ${matches.length} / ${currentResults.length}`,
       ``,
-      `## Confirmed Accounts`,
+      `## Executive Summary`,
+      currentAI?.executive_summary || 'No summary available.',
+      ``,
+      `## Confirmed Accounts & Profiles`,
       ``
     ];
     matches.forEach(e => {
       lines.push(`### ${e.provider}`);
-      if (e.identity_name) lines.push(`- Real Name / Handle: **${e.identity_name}**`);
-      lines.push(`- Identifier: ${e.identifier_display || e.detail}`);
-      lines.push(`- URL: ${e.profile_url}`);
+      if (e.identity_name) lines.push(`- **Real Name / Handle:** ${e.identity_name}`);
+      lines.push(`- **Identifier:** ${e.identifier_display || e.detail}`);
+      lines.push(`- **URL:** ${e.profile_url}`);
+      if (e.confidence) lines.push(`- **Confidence:** ${e.confidence}`);
       lines.push(``);
     });
-    triggerDownload(`shadowtrace_${currentQuery.replace(/\W/g, '_')}.md`, lines.join("\n"), "text/markdown");
+    triggerDownload(`${filenameBase}.md`, lines.join("\n"), "text/markdown");
+  } else if (format === "csv") {
+    const headers = ["Provider", "Category", "Status", "Real Name", "Identifier / Display", "Detail", "Profile URL", "Confidence", "Checked At"];
+    const rows = [headers.join(",")];
+    currentResults.forEach(r => {
+      const escapeCsv = (str) => `"${String(str || '').replace(/"/g, '""')}"`;
+      rows.push([
+        escapeCsv(r.provider),
+        escapeCsv(r.category || 'identity'),
+        escapeCsv(r.status),
+        escapeCsv(r.identity_name || ''),
+        escapeCsv(r.identifier_display || ''),
+        escapeCsv(r.detail || ''),
+        escapeCsv(r.profile_url || ''),
+        escapeCsv(r.confidence || ''),
+        escapeCsv(r.checked_at || '')
+      ].join(","));
+    });
+    triggerDownload(`${filenameBase}.csv`, rows.join("\r\n"), "text/csv");
+  } else if (format === "html") {
+    const html = `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>ShadowTrace OSINT Report - ${escapeHtml(currentQuery)}</title>
+  <style>
+    @media print {
+      body { background: #fff !important; color: #111 !important; font-size: 11pt; }
+      .no-print { display: none !important; }
+      .card { border: 1px solid #ccc !important; box-shadow: none !important; page-break-inside: avoid; }
+      a { color: #0284c7 !important; text-decoration: none; }
+    }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #0f172a; color: #f1f5f9; padding: 32px; max-width: 960px; margin: 0 auto; line-height: 1.6; }
+    h1 { margin-bottom: 4px; color: #38bdf8; font-size: 24px; }
+    .subtitle { color: #94a3b8; font-size: 13px; margin-bottom: 24px; }
+    .card { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 20px; margin-bottom: 24px; }
+    .card h2 { font-size: 16px; margin-top: 0; margin-bottom: 12px; color: #e2e8f0; border-bottom: 1px solid #334155; padding-bottom: 6px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 10px; }
+    th, td { border: 1px solid #334155; padding: 8px 12px; text-align: left; }
+    th { background: #0f172a; color: #cbd5e1; font-weight: 600; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+    .badge-green { background: #064e3b; color: #34d399; }
+    .badge-cyan { background: #082f49; color: #38bdf8; }
+    .print-btn { background: #0284c7; color: white; border: 0; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 13px; margin-bottom: 16px; }
+  </style>
+</head>
+<body>
+  <div class="no-print" style="display:flex;justify-content:space-between;align-items:center;">
+    <span>ShadowTrace Intelligence Report</span>
+    <button class="print-btn" onclick="window.print()">🖨️ Print / Save as PDF</button>
+  </div>
+  <h1>ShadowTrace OSINT Footprint Dossier</h1>
+  <div class="subtitle">Target: <strong>${escapeHtml(currentQuery)}</strong> (${escapeHtml((currentSearchType || '').toUpperCase())}) · Generated ${new Date().toUTCString()}</div>
+  
+  <div class="card">
+    <h2>Executive Briefing</h2>
+    <p>${escapeHtml(currentAI?.executive_summary || 'Investigation completed across 34+ live OSINT collectors.')}</p>
+  </div>
+
+  <div class="card">
+    <h2>Discovered Entity Anchors</h2>
+    <p><strong>Names:</strong> ${escapeHtml((currentEntities?.names || []).join(", ") || 'None')}</p>
+    <p><strong>Usernames:</strong> ${escapeHtml((currentEntities?.usernames || []).join(", ") || 'None')}</p>
+    <p><strong>Phones:</strong> ${escapeHtml((currentEntities?.phones || []).join(", ") || 'None')}</p>
+    <p><strong>Emails:</strong> ${escapeHtml((currentEntities?.emails || []).join(", ") || 'None')}</p>
+  </div>
+
+  <div class="card">
+    <h2>Candidate Accounts & Profiles (${matches.length})</h2>
+    <table>
+      <thead>
+        <tr><th>Platform</th><th>Identity</th><th>Identifier</th><th>Profile URL</th><th>Confidence</th></tr>
+      </thead>
+      <tbody>
+        ${matches.map(m => `
+          <tr>
+            <td><strong>${escapeHtml(m.provider)}</strong></td>
+            <td>${escapeHtml(m.identity_name || '—')}</td>
+            <td>${escapeHtml(m.identifier_display || m.detail)}</td>
+            <td><a href="${escapeHtml(m.profile_url)}" target="_blank">${escapeHtml(m.profile_url)}</a></td>
+            <td><span class="badge ${m.confidence === 'high' ? 'badge-green' : 'badge-cyan'}">${escapeHtml(m.confidence || 'verified')}</span></td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  </div>
+</body>
+</html>`;
+    triggerDownload(`${filenameBase}.html`, html, "text/html");
   } else if (format === "json") {
     const payload = JSON.stringify({
       target: currentQuery,
       type: currentSearchType,
       timestamp: new Date().toISOString(),
       entities: currentEntities,
+      threat_matrix: currentThreatMatrix,
+      ai: currentAI,
+      graph: currentGraph,
       evidence: currentResults
     }, null, 2);
-    triggerDownload(`shadowtrace_${currentQuery.replace(/\W/g, '_')}.json`, payload, "application/json");
+    triggerDownload(`${filenameBase}.json`, payload, "application/json");
   }
 }
 

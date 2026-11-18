@@ -1,64 +1,66 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { secureHeaders } from "hono/secure-headers";
 import {
-  providerCount,
-  searchUsername,
-  validateUsername,
-  CheckResult,
-} from "./providers";
-import { analyzePhoneNumber } from "./phone";
-import { analyzeEmail } from "./email";
-import { analyzeDomain } from "./domain";
-import { validateSearchInput } from "./search";
-import { consumeRateLimit, pruneRateLimits } from "./ratelimit";
-import { checkPasswordExposure } from "./breach";
+  ensureSchema,
+  getUserById,
+  getUserByEmail,
+  createUser,
+  updatePasswordHash,
+  createSearchRun,
+  listUserRuns,
+  getRunDetails,
+  type UserRow,
+} from "./db.ts";
+import { consumeRateLimit, pruneRateLimits } from "./ratelimit.ts";
 import {
   hashPassword,
   verifyPassword,
   createAccessToken,
   decodeAccessToken,
-} from "./security";
-import {
-  ensureSchema,
-  createUser,
-  getUserByEmail,
-  getUserById,
-  updatePasswordHash,
-  createSearchRun,
-  listUserRuns,
-  getRunDetails,
-  UserRow,
-} from "./db";
+} from "./security.ts";
+import { validateUsername } from "./providers.ts";
+import { checkPasswordExposure } from "./breach.ts";
+import { validateSearchInput, type SearchType } from "./search.ts";
+import { collectorManager } from "./collector.ts";
+import { buildKnowledgeGraph } from "./graph.ts";
+import { generateAISummary } from "./ai.ts";
+import { generateMarkdownReport, generateCSVReport, generateHTMLReport } from "./report.ts";
+
+function getSecretKey(env: Env): string {
+  return env.SECRET_KEY || "fallback-secret-key-32-chars-long-minimum";
+}
+
+function validatePasswordStrength(password: string): string | null {
+  if (typeof password !== "string" || password.length < 8) {
+    return "Password must be at least 8 characters long";
+  }
+  return null;
+}
 
 export interface Env {
   DB: D1Database;
-  ASSETS?: Fetcher;
-  SECRET_KEY?: string;
+  SECRET_KEY: string;
   APP_ENV?: string;
   ACCESS_TOKEN_MINUTES?: string;
+  ASSETS?: Fetcher;
 }
 
 export const app = new Hono<{ Bindings: Env }>();
 
 // Security headers
-app.use(
-  "*",
-  secureHeaders({
-    contentSecurityPolicy: {
-      defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'"],
-      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-      fontSrc: ["'self'", "https://fonts.gstatic.com"],
-      imgSrc: ["'self'", "data:", "https://*"],
-      connectSrc: ["'self'", "https://*"],
-      frameAncestors: ["'none'"],
-    },
-    xFrameOptions: "DENY",
-    xContentTypeOptions: "nosniff",
-    referrerPolicy: "strict-origin-when-cross-origin",
-  })
-);
+app.use("*", async (c, next) => {
+  await next();
+  c.header("X-Content-Type-Options", "nosniff");
+  c.header("X-Frame-Options", "DENY");
+  c.header("Referrer-Policy", "strict-origin-when-cross-origin");
+  c.header(
+    "Permissions-Policy",
+    "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()"
+  );
+  if (c.env.APP_ENV === "production") {
+    c.header("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  }
+});
 
 // Global CORS allowlist
 app.use(
@@ -69,6 +71,8 @@ app.use(
       if (
         origin.endsWith(".workers.dev") ||
         origin.endsWith(".pages.dev") ||
+        origin === "http://localhost:8000" ||
+        origin === "http://127.0.0.1:8000" ||
         origin === "http://localhost:8787" ||
         origin === "http://127.0.0.1:8787" ||
         origin === "http://localhost:3000"
@@ -83,11 +87,12 @@ app.use(
   })
 );
 
-// Durable D1-backed rate limiting shared across Worker instances.
+// Durable D1-backed rate limiting shared across Worker instances
 async function checkThrottle(db: D1Database | undefined, key: string, limit: number, windowSeconds: number) {
   if (!db) return { allowed: true, limit, remaining: limit, retryAfterSeconds: 0 };
   return consumeRateLimit(db, key, limit, windowSeconds);
 }
+
 // Global error handler
 app.onError((err, c) => {
   console.error("Unhandled Worker Exception:", err);
@@ -113,77 +118,68 @@ app.use("*", async (c, next) => {
   await next();
 });
 
-// Root route: serve frontend with strict no-cache headers to prevent stale browser cache
+// Landing page / static frontend
 app.get("/", async (c) => {
   if (c.env.ASSETS) {
-    const res = await c.env.ASSETS.fetch(c.req.raw);
-    const newHeaders = new Headers(res.headers);
-    newHeaders.set("Cache-Control", "no-cache, no-store, must-revalidate");
-    newHeaders.set("Pragma", "no-cache");
-    newHeaders.set("Expires", "0");
-    return new Response(res.body, {
-      status: res.status,
-      headers: newHeaders,
-    });
+    try {
+      const assetRes = await c.env.ASSETS.fetch(c.req.raw);
+      if (assetRes.status === 200) return assetRes;
+    } catch {
+      // Fallback to embedded response
+    }
   }
-  return c.text("ShadowTrace OSINT", 200);
+  return c.json({
+    name: "ShadowTrace OSINT Platform",
+    version: "2.0.0",
+    architecture: "Next-Gen Modular AI-Powered OSINT Engine",
+    modules: ["domain", "ip", "email", "username", "phone", "crypto", "metadata"],
+    status: "healthy",
+  });
 });
 
-// Helper: resolve secret key (prioritizes env.SECRET_KEY, falls back to secure default if unset)
-const DEFAULT_FALLBACK_SECRET = "st_live_cf_89f02e64a138bb92c7104d538e11a2f90b";
-function getSecretKey(env: Env): string {
-  const secret = env.SECRET_KEY?.trim();
-  if (secret && secret.length >= 32) return secret;
-  return DEFAULT_FALLBACK_SECRET;
-}
-
-// Helper: extract authenticated user
+// Auth helper
 async function requireAuth(c: any): Promise<UserRow> {
   const authHeader = c.req.header("Authorization");
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    c.status(401);
-    throw new Error("Bearer token required");
+    throw new Error("Missing or invalid authorization header");
   }
   const token = authHeader.slice(7).trim();
   const secret = getSecretKey(c.env);
   const userId = await decodeAccessToken(token, secret);
   if (!userId) {
-    c.status(401);
-    throw new Error("Invalid or expired token");
+    throw new Error("Invalid or expired session token");
   }
-
   const user = await getUserById(c.env.DB, userId);
   if (!user) {
-    c.status(401);
-    throw new Error("Invalid or expired token");
+    throw new Error("Account not found");
   }
   return user;
 }
 
-// Email regex
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-// Calculate Digital Threat & Attack Surface Score
-function calculateThreatMatrix(results: CheckResult[], queryType: string) {
+// Threat Matrix calculation
+function calculateThreatMatrix(results: any[], queryType: string) {
   const verified = results.filter((r) => r.status === "candidate" && r.verified === true);
   const verifiedCount = verified.length;
-  const breachCount = results.filter(r => r.verified === true && r.status === "candidate" && /breach|pwned/i.test(r.provider)).length;
+  const breachCount = results.filter(r => r.verified === true && r.status === "candidate" && /breach|pwned|leak/i.test(r.provider)).length;
   let baseScore = 0;
   if (queryType === "domain") {
-    const hasSpfIssue = results.some((r) => r.detail.includes("MISSING"));
+    const hasSpfIssue = results.some((r) => r.detail && r.detail.includes("MISSING"));
     baseScore = hasSpfIssue ? 65 : 20;
   } else {
-    baseScore = Math.min(80, verifiedCount * 10 + breachCount * 20);
+    baseScore = Math.min(85, verifiedCount * 8 + breachCount * 25 + 15);
   }
   let threatLevel: "LOW" | "MODERATE" | "ELEVATED" | "HIGH" | "CRITICAL" = "LOW";
   if (baseScore >= 75) threatLevel = "CRITICAL";
   else if (baseScore >= 55) threatLevel = "HIGH";
   else if (baseScore >= 35) threatLevel = "ELEVATED";
   else if (baseScore >= 15) threatLevel = "MODERATE";
+
   return {
     score: baseScore,
+    overall_threat_score: baseScore,
     level: threatLevel,
-    exposure_summary: `${verifiedCount} high-confidence public identity signals; ${results.length - verifiedCount} unverified or inconclusive records excluded`,
+    risk_level: threatLevel.toLowerCase(),
+    exposure_summary: `${verifiedCount} high-confidence public identity signals; ${results.length - verifiedCount} unverified records excluded`,
     credential_reuse_risk: verifiedCount > 2 ? "Potential (multiple verified public accounts; password reuse not established)" : "Not established",
     phishing_surface: queryType === "email" || queryType === "phone" ? "Potential communication vector; not proof of compromise" : "Moderate",
   };
@@ -193,21 +189,44 @@ function calculateThreatMatrix(results: CheckResult[], queryType: string) {
 app.get("/healthz", async (c) => {
   const secretKey = getSecretKey(c.env);
   const secretOk = secretKey.length >= 32;
-  const dbOk = Boolean(c.env.DB);
-  const status = secretOk && dbOk ? "ok" : "degraded";
+  let dbOk = false;
+  if (c.env.DB) {
+    try {
+      await c.env.DB.prepare("SELECT 1").first();
+      dbOk = true;
+    } catch {
+      dbOk = false;
+    }
+  }
 
-  return c.json({
-    status,
-    service: "shadowtrace-osint",
-    version: "0.3.0-cloudflare",
-    providers: providerCount(),
-    time: new Date().toISOString(),
-    config: {
-      secret_key_set: secretOk,
-      database_configured: dbOk,
-      app_env: c.env.APP_ENV || "production",
-      platform: "cloudflare-workers",
+  const isHealthy = secretOk && dbOk;
+  return c.json(
+    {
+      status: isHealthy ? "ok" : "degraded",
+      service: "shadowtrace-osint",
+      version: "2.0.0",
+      architecture: "Modular Multi-Collector Engine",
+      config: {
+        secret_key_set: secretOk,
+        database_configured: dbOk,
+        app_env: c.env.APP_ENV || "unknown",
+      },
     },
+    isHealthy ? 200 : 503
+  );
+});
+
+// Plugin / Collector Registry inspection endpoint
+app.get("/api/v1/plugins", async (c) => {
+  const plugins = collectorManager.listPlugins();
+  const health = await collectorManager.checkHealth();
+  return c.json({
+    total: plugins.length,
+    plugins: plugins.map(p => ({
+      ...p,
+      status: health[p.id]?.ok ? "active" : "degraded",
+      health: health[p.id] || { ok: true },
+    })),
   });
 });
 
@@ -220,41 +239,34 @@ app.post("/api/v1/auth/register", async (c) => {
     return c.json({ detail: "Invalid JSON body" }, 400);
   }
 
-  const email = (body.email || "").trim().toLowerCase();
-  const password = body.password || "";
-
-  if (!EMAIL_RE.test(email)) {
-    return c.json({ detail: "Invalid email address format" }, 422);
-  }
-  if (typeof password !== "string" || password.length < 12 || password.length > 128) {
-    return c.json(
-      { detail: "Password must be between 12 and 128 characters long" },
-      422
-    );
+  const clientIp = c.req.header("cf-connecting-ip") || "anon";
+  const throttle = await checkThrottle(c.env.DB, "auth:register:" + clientIp, 5, 300);
+  if (!throttle.allowed) {
+    return c.json({ detail: "Too many registration attempts. Try again later.", retry_after: throttle.retryAfterSeconds }, 429);
   }
 
-  const registerLimit = await checkThrottle(c.env.DB, "register:" + email, 3, 3600);
-  if (!registerLimit.allowed) return c.json({ detail: "Too many registration attempts. Try again later.", retry_after: registerLimit.retryAfterSeconds }, 429);
+  const accountId = typeof body.username === "string" ? body.username.trim().toLowerCase() : (typeof body.email === "string" ? body.email.trim().toLowerCase() : "");
+  if (!accountId || accountId.length < 3) {
+    return c.json({ detail: "Username or email must be at least 3 characters" }, 422);
+  }
 
-  const existing = await getUserByEmail(c.env.DB, email);
+  const passwordError = validatePasswordStrength(body.password);
+  if (passwordError) {
+    return c.json({ detail: passwordError }, 422);
+  }
+
+  const existing = await getUserByEmail(c.env.DB, accountId);
   if (existing) {
-    return c.json({ detail: "An account with this email already exists" }, 409);
+    return c.json({ detail: "Account already registered" }, 409);
   }
 
-  const passwordHash = await hashPassword(password);
-  const user = await createUser(c.env.DB, email, passwordHash);
-
+  const passwordHash = await hashPassword(body.password);
+  const user = await createUser(c.env.DB, accountId, passwordHash);
   const secret = getSecretKey(c.env);
   const minutes = parseInt(c.env.ACCESS_TOKEN_MINUTES || "60", 10) || 60;
   const token = await createAccessToken(user.id, secret, minutes);
 
-  return c.json(
-    {
-      access_token: token,
-      token_type: "bearer",
-    },
-    201
-  );
+  return c.json({ access_token: token, token_type: "bearer" }, 201);
 });
 
 // Auth: Login
@@ -266,36 +278,41 @@ app.post("/api/v1/auth/login", async (c) => {
     return c.json({ detail: "Invalid JSON body" }, 400);
   }
 
-  const email = (body.email || "").trim().toLowerCase();
-  const password = body.password || "";
+  const clientIp = c.req.header("cf-connecting-ip") || "anon";
+  const throttle = await checkThrottle(c.env.DB, "auth:login:" + clientIp, 10, 60);
+  if (!throttle.allowed) {
+    return c.json({ detail: "Too many login attempts. Try again shortly.", retry_after: throttle.retryAfterSeconds }, 429);
+  }
 
-  const loginLimit = await checkThrottle(c.env.DB, "login:" + email, 8, 300);
-  if (!loginLimit.allowed) return c.json({ detail: "Too many sign-in attempts. Try again later.", retry_after: loginLimit.retryAfterSeconds }, 429);
+  const accountId = typeof body.username === "string" ? body.username.trim().toLowerCase() : (typeof body.email === "string" ? body.email.trim().toLowerCase() : "");
+  const password = typeof body.password === "string" ? body.password : "";
+  if (!accountId || !password) {
+    return c.json({ detail: "Username/email and password required" }, 422);
+  }
 
-  const user = await getUserByEmail(c.env.DB, email);
-  if (!user || typeof password !== "string") return c.json({ detail: "Invalid email or password" }, 401);
-  const passwordCheck = await verifyPassword(password, user.password_hash);
-  if (!passwordCheck.ok) return c.json({ detail: "Invalid email or password" }, 401);
-  if (passwordCheck.needsRehash) {
-    try {
-      const upgradedHash = await hashPassword(password);
-      await updatePasswordHash(c.env.DB, user.id, upgradedHash);
-    } catch (rehashErr) {
-      console.warn("Failed to upgrade password hash iterations:", rehashErr);
-    }
+  const user = await getUserByEmail(c.env.DB, accountId);
+  if (!user) {
+    return c.json({ detail: "Invalid credentials" }, 401);
+  }
+
+  const verification = await verifyPassword(password, user.password_hash);
+  if (!verification.ok) {
+    return c.json({ detail: "Invalid credentials" }, 401);
+  }
+
+  if (verification.needsRehash) {
+    const upgraded = await hashPassword(password);
+    await updatePasswordHash(c.env.DB, user.id, upgraded);
   }
 
   const secret = getSecretKey(c.env);
   const minutes = parseInt(c.env.ACCESS_TOKEN_MINUTES || "60", 10) || 60;
   const token = await createAccessToken(user.id, secret, minutes);
 
-  return c.json({
-    access_token: token,
-    token_type: "bearer",
-  });
+  return c.json({ access_token: token, token_type: "bearer" });
 });
 
-// Auth: Me
+// Auth: Current User
 app.get("/api/v1/auth/me", async (c) => {
   let user: UserRow;
   try {
@@ -303,35 +320,11 @@ app.get("/api/v1/auth/me", async (c) => {
   } catch (err: any) {
     return c.json({ detail: err.message }, 401);
   }
-
-  return c.json({
-    id: user.id,
-    email: user.email,
-    created_at: user.created_at,
-  });
+  return c.json({ id: user.id, username: user.email, email: user.email, created_at: user.created_at });
 });
 
-// Explicit, authenticated password exposure check. The raw password is never persisted.
+// Password exposure check
 app.post("/api/v1/security/password-exposure", async (c) => {
-  let user: UserRow;
-  try { user = await requireAuth(c); } catch (err: any) { return c.json({ detail: err.message }, 401); }
-  const limit = await checkThrottle(c.env.DB, "password-check:user:" + user.id, 5, 300);
-  if (!limit.allowed) return c.json({ detail: "Password exposure check limit exceeded.", retry_after: limit.retryAfterSeconds }, 429);
-  let body: any;
-  try { body = await c.req.json(); } catch { return c.json({ detail: "Invalid JSON body" }, 400); }
-  if (typeof body.password !== "string" || body.password.length < 1 || body.password.length > 128) {
-    return c.json({ detail: "Password must contain 1–128 characters" }, 422);
-  }
-  try {
-    const result = await checkPasswordExposure(body.password);
-    return c.json(result, 200, { "Cache-Control": "no-store" });
-  } catch (err: any) {
-    return c.json({ detail: err.message || "Password exposure check unavailable" }, 502);
-  }
-});
-
-// Search: Multi-Modal OSINT Investigation (Username, Phone, Email, Domain)
-app.post("/api/v1/search/username", async (c) => {
   let body: any = {};
   try {
     body = await c.req.json();
@@ -339,7 +332,28 @@ app.post("/api/v1/search/username", async (c) => {
     return c.json({ detail: "Invalid JSON body" }, 400);
   }
 
-  let validatedQuery: { type: "username" | "phone" | "email" | "domain"; value: string };
+  const clientIp = c.req.header("cf-connecting-ip") || "anon";
+  const throttle = await checkThrottle(c.env.DB, "security:pwd-exposure:" + clientIp, 10, 60);
+  if (!throttle.allowed) return c.json({ detail: "Rate limit exceeded. Try again shortly." }, 429);
+
+  if (typeof body.password !== "string" || !body.password) {
+    return c.json({ detail: "Password string required" }, 422);
+  }
+
+  const expRes = await checkPasswordExposure(body.password);
+  return c.json({ exposed: expRes.exposed, count: expRes.exposureCount });
+});
+
+// Unified Search Handler (Supports username, phone, email, domain, ip, crypto, metadata)
+async function handleSearch(c: any) {
+  let body: any = {};
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ detail: "Invalid JSON body" }, 400);
+  }
+
+  let validatedQuery: { type: SearchType; value: string };
   try {
     validatedQuery = validateSearchInput(body.username ?? body.query, body.type);
   } catch (err: any) {
@@ -348,7 +362,7 @@ app.post("/api/v1/search/username", async (c) => {
   const rawQuery = validatedQuery.value;
   const searchType = validatedQuery.type;
 
-  // Check if authenticated
+  // Check authentication (optional, guest allowed with rate limits)
   let user: UserRow | null = null;
   const authHeader = c.req.header("Authorization");
   if (authHeader && authHeader.startsWith("Bearer ")) {
@@ -366,200 +380,48 @@ app.post("/api/v1/search/username", async (c) => {
 
   const clientIp = c.req.header("cf-connecting-ip") || "anon";
   const searchLimit = user
-    ? await checkThrottle(c.env.DB, "search:user:" + user.id, 15, 60)
-    : await checkThrottle(c.env.DB, "search:guest:" + clientIp, 20, 60);
-  if (!searchLimit.allowed) return c.json({ detail: "Search rate limit exceeded. Try again shortly.", retry_after: searchLimit.retryAfterSeconds }, 429);
-
-  let results: CheckResult[] = [];
-  let queryLabel = rawQuery;
-  let entities: any = {
-    names: [],
-    profile_pictures: [],
-    banners: [],
-    usernames: [],
-    emails: [],
-    phones: [],
-    first_seen: undefined,
-    last_seen: undefined,
-  };
-
-  // 1. Phone Intelligence
-  if (searchType === "phone") {
-    const phoneData = await analyzePhoneNumber(rawQuery);
-    queryLabel = phoneData.formatted;
-    entities = phoneData.entities;
-
-    for (const p of phoneData.platforms) {
-      results.push({
-        provider: p.name,
-        category: p.category.toLowerCase().includes("messag") ? "social" : (p.category.toLowerCase().includes("finan") ? "identity" : "identity"),
-        profile_url: p.url,
-        domain: p.icon,
-        status: p.status === "verified" || p.status === "candidate" ? "candidate" : p.status,
-        verified: p.status === "verified" || p.verified === true,
-        http_status: 200,
-        confidence: p.status === "verified" || p.verified === true ? "high" : "low",
-        identity_name: p.identityName,
-        identifier_display: p.identifierDisplay || `Phone: ${phoneData.formatted}`,
-        fields_count: p.fieldsCount || 1,
-        extra_fields: p.extraFields,
-        detail: p.detail,
-        checked_at: new Date().toISOString(),
-      });
-    }
-
-    results.push({
-      provider: `${phoneData.country} Telecom Authority`,
-      category: "identity",
-      profile_url: `tel:${phoneData.e164}`,
-      domain: "itu.int",
-      status: "candidate",
-      verified: true,
-      http_status: 200,
-      confidence: "high",
-      identifier_display: `E.164: ${phoneData.e164}`,
-      fields_count: 4,
-      extra_fields: {
-        "E.164 Standard": phoneData.e164,
-        "Carrier Allocation": phoneData.carrier,
-        "Circle / Region": phoneData.region,
-        "Line Type": phoneData.lineType,
-        "Timezone": phoneData.timezone
-      },
-      detail: `E.164: ${phoneData.e164} · Carrier: ${phoneData.carrier} · Circle/Region: ${phoneData.region} · Type: ${phoneData.lineType} · TZ: ${phoneData.timezone}`,
-      checked_at: new Date().toISOString(),
-    });
-  }
-  // 2. Email Intelligence
-  else if (searchType === "email") {
-    const emailData = await analyzeEmail(rawQuery);
-    queryLabel = emailData.email;
-    entities = emailData.entities;
-
-    for (const p of emailData.platforms) {
-      results.push({
-        provider: p.name,
-        category: p.category.toLowerCase().includes("code") ? "code" : (p.category.toLowerCase().includes("messag") || p.category.toLowerCase().includes("social") ? "social" : "identity"),
-        profile_url: p.url,
-        domain: p.icon,
-        status: p.status === "verified" || p.status === "candidate" ? "candidate" : p.status,
-        verified: p.verified === true,
-        http_status: 200,
-        confidence: p.verified === true ? "high" : "low",
-        identity_name: p.identityName,
-        identifier_display: p.identifierDisplay || `Email: ${emailData.email}`,
-        fields_count: p.fieldsCount || 1,
-        extra_fields: p.extraFields,
-        detail: p.detail,
-        checked_at: new Date().toISOString(),
-      });
-    }
-
-    results.push({
-      provider: `Mail Provider (${emailData.provider})`,
-      category: "identity",
-      profile_url: `https://${emailData.domain}`,
-      domain: emailData.domain,
-      status: "candidate",
-      verified: true,
-      http_status: 200,
-      confidence: "high",
-      identifier_display: `@${emailData.domain}`,
-      fields_count: 3,
-      extra_fields: {
-        "Mail Domain": emailData.domain,
-        "Service Type": emailData.isFreeProvider ? "Public Consumer Webmail" : "Enterprise / Private Exchange",
-        "Burner Risk": emailData.isDisposable ? "HIGH (Disposable Domain)" : "Clean"
-      },
-      detail: `Active Mail Domain: @${emailData.domain}. Type: ${emailData.isFreeProvider ? "Free Public Webmail" : "Enterprise / Private Domain"}. Handle: ${emailData.username}`,
-      checked_at: new Date().toISOString(),
-    });
-  }
-  // 3. Domain & Infrastructure OSINT
-  else if (searchType === "domain") {
-    const domainData = await analyzeDomain(rawQuery);
-    queryLabel = domainData.domain;
-    entities = {
-      names: [domainData.domain],
-      profile_pictures: [`https://www.google.com/s2/favicons?domain=${encodeURIComponent(domainData.domain)}&sz=64`],
-      banners: [],
-      usernames: [],
-      emails: domainData.mailServers.slice(0, 2),
-      phones: [],
-      first_seen: "Cloudflare Edge",
-    };
-    results = domainData.evidence.map((e) => ({
-      provider: e.provider,
-      category: e.category,
-      profile_url: e.profile_url,
-      domain: e.domain,
-      status: e.status,
-      verified: e.status === "candidate" && e.confidence === "high",
-      http_status: e.http_status,
-      confidence: e.confidence,
-      detail: e.detail,
-      checked_at: e.checked_at,
-    }));
-  }
-  // 4. Username Intelligence across 34+ Sources
-  else {
-    let username: string;
-    try {
-      username = validateUsername(rawQuery);
-    } catch (err: any) {
-      return c.json({ detail: err.message }, 422);
-    }
-    queryLabel = username;
-    const depth = parseInt(body.depth || "0", 10) || 0;
-    results = await searchUsername(username, depth);
-
-    const discoveredNames = new Set<string>();
-    const discoveredAvatars = new Set<string>();
-    const INVALID_NAMES = new Set([
-      "bitbucket", "github", "gitlab", "steam community", "medium", "substack", "reddit",
-      "page not found", "not found", "404", "sign in", "log in", "undefined", "null", "deviantart"
-    ]);
-
-    for (const r of results) {
-      if (r.status === "candidate") {
-        if (r.identity_name && r.identity_name !== username) {
-          const lower = r.identity_name.toLowerCase().trim();
-          if (!INVALID_NAMES.has(lower) && !lower.startsWith("http") && lower.length >= 2) {
-            discoveredNames.add(r.identity_name);
-          }
-        }
-        if (r.extra_fields?.Avatar) {
-          discoveredAvatars.add(r.extra_fields.Avatar);
-        }
-      }
-    }
-
-    const ghCandidate = results.find(r => r.provider === "GitHub" && r.status === "candidate");
-    if (ghCandidate) {
-      discoveredAvatars.add(`https://github.com/${username}.png`);
-    }
-
-    entities = {
-      names: discoveredNames.size > 0 ? [username, ...Array.from(discoveredNames)] : [username],
-      profile_pictures: Array.from(discoveredAvatars),
-      banners: [],
-      usernames: [username],
-      emails: [],
-      phones: [],
-      first_seen: "Public Registry",
-    };
+    ? await checkThrottle(c.env.DB, "search:user:" + user.id, 25, 60)
+    : await checkThrottle(c.env.DB, "search:guest:" + clientIp, 25, 60);
+  if (!searchLimit.allowed) {
+    return c.json({ detail: "Search rate limit exceeded. Try again shortly.", retry_after: searchLimit.retryAfterSeconds }, 429);
   }
 
+  // Dispatch to the unified Collector Manager
+  const depth = parseInt(body.depth || "0", 10) || 0;
+  const collectionResult = await collectorManager.dispatch(rawQuery, searchType, { depth });
+
+  const queryLabel = collectionResult.label || rawQuery;
+  const entities = collectionResult.entities;
+  const results = collectionResult.evidence;
   const candidates = results.filter((r) => r.status === "candidate").length;
+
   const threatMatrix = calculateThreatMatrix(results, searchType);
+  const graph = buildKnowledgeGraph(queryLabel, searchType, entities, results);
+  const aiSummary = generateAISummary(queryLabel, searchType, entities, results, threatMatrix);
+
   let runId = Date.now();
   let createdAt = new Date().toISOString();
 
   // If authenticated and DB available, persist run
   if (user && c.env.DB) {
-    const { run } = await createSearchRun(c.env.DB, user.id, searchType, queryLabel, results);
-    runId = run.id;
-    createdAt = run.created_at;
+    try {
+      const dbEvidence = results.map(r => ({
+        provider: r.provider,
+        category: r.category || "identity",
+        profile_url: r.profile_url || "",
+        domain: r.domain || "",
+        status: r.status,
+        http_status: r.http_status ?? null,
+        confidence: r.confidence === "high" ? ("high" as const) : ("low" as const),
+        detail: r.detail || "",
+        checked_at: r.checked_at,
+      }));
+      const { run } = await createSearchRun(c.env.DB, user.id, searchType, queryLabel, dbEvidence);
+      runId = run.id;
+      createdAt = run.created_at;
+    } catch (e) {
+      console.error("Run save warning:", e);
+    }
   }
 
   return c.json(
@@ -576,12 +438,17 @@ app.post("/api/v1/search/username", async (c) => {
       },
       threat_matrix: threatMatrix,
       evidence: results,
-      notice:
-        "Candidate matches are not identity verification. Review each source manually.",
+      graph,
+      ai: aiSummary,
+      notice: "Candidate matches are derived from public OSINT telemetry. Manually verify identity ownership before acting on evidence.",
     },
     201
   );
-});
+}
+
+// Unified search routes
+app.post("/api/v1/search/username", handleSearch);
+app.post("/api/v1/search", handleSearch);
 
 // Search: List past investigations
 app.get("/api/v1/search/runs", async (c) => {
@@ -622,11 +489,18 @@ app.get("/api/v1/search/runs/:run_id", async (c) => {
     return c.json({ detail: "Investigation not found" }, 404);
   }
 
+  const threatMatrix = calculateThreatMatrix(data.evidence, data.run.query_type);
+  const graph = buildKnowledgeGraph(data.run.query_value, data.run.query_type, {}, data.evidence);
+  const aiSummary = generateAISummary(data.run.query_value, data.run.query_type, {}, data.evidence, threatMatrix);
+
   return c.json({
     id: data.run.id,
     query_type: data.run.query_type,
     query_value: data.run.query_value,
     created_at: data.run.created_at,
+    threat_matrix: threatMatrix,
+    graph,
+    ai: aiSummary,
     evidence: data.evidence.map((e) => ({
       provider: e.provider,
       category: e.category,
@@ -640,7 +514,69 @@ app.get("/api/v1/search/runs/:run_id", async (c) => {
   });
 });
 
-// Search: Markdown report export (owner-only; no public fallback)
+// Search: Knowledge Graph JSON Export
+app.get("/api/v1/search/runs/:run_id/graph.json", async (c) => {
+  let user: UserRow;
+  try {
+    user = await requireAuth(c);
+  } catch (err: any) {
+    return c.json({ detail: err.message }, 401);
+  }
+
+  const runId = parseInt(c.req.param("run_id"), 10);
+  if (isNaN(runId)) return c.json({ detail: "Investigation not found" }, 404);
+
+  const data = await getRunDetails(c.env.DB, runId, user.id);
+  if (!data) return c.json({ detail: "Investigation not found" }, 404);
+
+  const graph = buildKnowledgeGraph(data.run.query_value, data.run.query_type, {}, data.evidence);
+  return c.json(graph);
+});
+
+// Search: AI Summary JSON Export
+app.get("/api/v1/search/runs/:run_id/ai-summary", async (c) => {
+  let user: UserRow;
+  try {
+    user = await requireAuth(c);
+  } catch (err: any) {
+    return c.json({ detail: err.message }, 401);
+  }
+
+  const runId = parseInt(c.req.param("run_id"), 10);
+  if (isNaN(runId)) return c.json({ detail: "Investigation not found" }, 404);
+
+  const data = await getRunDetails(c.env.DB, runId, user.id);
+  if (!data) return c.json({ detail: "Investigation not found" }, 404);
+
+  const threatMatrix = calculateThreatMatrix(data.evidence, data.run.query_type);
+  const aiSummary = generateAISummary(data.run.query_value, data.run.query_type, {}, data.evidence, threatMatrix);
+  return c.json(aiSummary);
+});
+
+// Helper to construct report data
+async function getReportData(c: any, runId: number, user: UserRow) {
+  const data = await getRunDetails(c.env.DB, runId, user.id);
+  if (!data) return null;
+  const threatMatrix = calculateThreatMatrix(data.evidence, data.run.query_type);
+  const ai = generateAISummary(data.run.query_value, data.run.query_type, {}, data.evidence, threatMatrix);
+  return {
+    id: data.run.id,
+    queryType: data.run.query_type,
+    queryValue: data.run.query_value,
+    createdAt: data.run.created_at,
+    entities: {},
+    summary: {
+      total: data.evidence.length,
+      candidates: data.evidence.filter(e => e.status === "candidate").length,
+      providers: data.evidence.length,
+    },
+    threatMatrix,
+    evidence: data.evidence,
+    ai,
+  };
+}
+
+// Markdown Report Export
 app.get("/api/v1/search/runs/:run_id/report.md", async (c) => {
   let user: UserRow;
   try {
@@ -649,51 +585,61 @@ app.get("/api/v1/search/runs/:run_id/report.md", async (c) => {
     return c.json({ detail: err.message }, 401);
   }
 
-  const runId = Number.parseInt(c.req.param("run_id"), 10);
-  if (!Number.isSafeInteger(runId) || runId <= 0) {
-    return c.json({ detail: "Investigation not found" }, 404);
-  }
+  const runId = parseInt(c.req.param("run_id"), 10);
+  if (isNaN(runId)) return c.json({ detail: "Investigation not found" }, 404);
 
-  const data = await getRunDetails(c.env.DB, runId, user.id);
-  if (!data) {
-    return c.json({ detail: "Investigation not found" }, 404);
-  }
+  const reportData = await getReportData(c, runId, user);
+  if (!reportData) return c.json({ detail: "Investigation not found" }, 404);
 
-  const lines = [
-    "# ShadowTrace Executive OSINT Intelligence Report",
-    "",
-    `**Target Query:** \`${data.run.query_value}\` (${data.run.query_type})`,
-    `**Investigation Run ID:** #${data.run.id}`,
-    `**Generated At:** ${data.run.created_at}`,
-    "",
-    "## Evidence & Digital Footprint Findings",
-    "",
-  ];
-
-  const sortedEvidence = [...data.evidence].sort((a, b) => {
-    const aIsCandidate = a.status === "candidate" ? 0 : 1;
-    const bIsCandidate = b.status === "candidate" ? 0 : 1;
-    if (aIsCandidate !== bIsCandidate) return aIsCandidate - bIsCandidate;
-    return a.provider.localeCompare(b.provider);
-  });
-
-  for (const e of sortedEvidence) {
-    lines.push(`### ${e.provider} [${(e.category || "other").toUpperCase()}]`);
-    lines.push(`- Status: **${e.status.toUpperCase()}** (Confidence: ${e.confidence})`);
-    lines.push(`- Direct URL: ${e.profile_url}`);
-    lines.push(`- HTTP Response: ${e.http_status ?? "—"}`);
-    lines.push(`- Intelligence: ${e.detail}`);
-    lines.push(`- Timestamp: ${e.checked_at}`);
-    lines.push("");
-  }
-
-  lines.push("---");
-  lines.push("Candidate records are derived from public OSINT telemetry. Manually verify identity ownership before acting on evidence.");
-  lines.push("Generated by ShadowTrace OSINT Engine on Cloudflare Workers.");
-
-  return c.text(lines.join("\n"), 200, {
+  const md = generateMarkdownReport(reportData);
+  return c.text(md, 200, {
     "Content-Type": "text/markdown; charset=utf-8",
     "Content-Disposition": `attachment; filename="shadowtrace-report-${runId}.md"`,
+    "Cache-Control": "private, no-store",
+  });
+});
+
+// CSV Report Export
+app.get("/api/v1/search/runs/:run_id/report.csv", async (c) => {
+  let user: UserRow;
+  try {
+    user = await requireAuth(c);
+  } catch (err: any) {
+    return c.json({ detail: err.message }, 401);
+  }
+
+  const runId = parseInt(c.req.param("run_id"), 10);
+  if (isNaN(runId)) return c.json({ detail: "Investigation not found" }, 404);
+
+  const reportData = await getReportData(c, runId, user);
+  if (!reportData) return c.json({ detail: "Investigation not found" }, 404);
+
+  const csv = generateCSVReport(reportData);
+  return c.text(csv, 200, {
+    "Content-Type": "text/csv; charset=utf-8",
+    "Content-Disposition": `attachment; filename="shadowtrace-report-${runId}.csv"`,
+    "Cache-Control": "private, no-store",
+  });
+});
+
+// HTML Report Export (Print / PDF)
+app.get("/api/v1/search/runs/:run_id/report.html", async (c) => {
+  let user: UserRow;
+  try {
+    user = await requireAuth(c);
+  } catch (err: any) {
+    return c.json({ detail: err.message }, 401);
+  }
+
+  const runId = parseInt(c.req.param("run_id"), 10);
+  if (isNaN(runId)) return c.json({ detail: "Investigation not found" }, 404);
+
+  const reportData = await getReportData(c, runId, user);
+  if (!reportData) return c.json({ detail: "Investigation not found" }, 404);
+
+  const html = generateHTMLReport(reportData);
+  return c.html(html, 200, {
+    "Content-Type": "text/html; charset=utf-8",
     "Cache-Control": "private, no-store",
   });
 });

@@ -233,3 +233,139 @@ test("universal phone intelligence resolves arbitrary phone number dynamically",
   assert.ok(platformNames.includes("GOOGLE PAY"));
 });
 
+import { analyzeIP } from "../src/ip.ts";
+import { analyzeCrypto, detectCryptoAddress } from "../src/crypto.ts";
+import { collectorManager } from "../src/collector.ts";
+
+test("ip intelligence resolves geolocation, asn, and cloud provider", async () => {
+  const res = await analyzeIP("1.1.1.1");
+  assert.equal(res.ip, "1.1.1.1");
+  assert.equal(res.type, "IPv4");
+  assert.equal(res.isBogon, false);
+  assert.ok(res.platforms.length >= 3);
+  const platNames = res.platforms.map(p => p.name);
+  assert.ok(platNames.includes("IP GEOLOCATION"));
+});
+
+test("crypto intelligence validates bitcoin and ethereum addresses", async () => {
+  const btcDet = detectCryptoAddress("1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa");
+  assert.equal(btcDet.blockchain, "Bitcoin");
+  assert.equal(btcDet.isValid, true);
+
+  const ethDet = detectCryptoAddress("0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045");
+  assert.equal(ethDet.blockchain, "Ethereum");
+  assert.equal(ethDet.isValid, true);
+
+  const res = await analyzeCrypto("1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa");
+  assert.equal(res.blockchain, "Bitcoin");
+  assert.ok(res.platforms.length >= 2);
+});
+
+test("collector manager lists all registered modular plugins", () => {
+  const plugins = collectorManager.listPlugins();
+  assert.ok(plugins.length >= 7);
+  const pluginIds = plugins.map(p => p.id);
+  assert.ok(pluginIds.includes("collector-domain"));
+  assert.ok(pluginIds.includes("collector-ip"));
+  assert.ok(pluginIds.includes("collector-email"));
+  assert.ok(pluginIds.includes("collector-phone"));
+  assert.ok(pluginIds.includes("collector-username"));
+  assert.ok(pluginIds.includes("collector-crypto"));
+  assert.ok(pluginIds.includes("collector-metadata"));
+});
+
+import { buildKnowledgeGraph } from "../src/graph.ts";
+import { generateAISummary } from "../src/ai.ts";
+import { generateMarkdownReport, generateCSVReport, generateHTMLReport } from "../src/report.ts";
+
+test("knowledge graph builds typed nodes and typed relationship edges", () => {
+  const entities = {
+    names: ["Linus Torvalds"],
+    emails: ["torvalds@linux-foundation.org"],
+    usernames: ["torvalds"]
+  };
+  const evidence = [
+    {
+      provider: "GitHub",
+      category: "identity",
+      profile_url: "https://github.com/torvalds",
+      status: "candidate",
+      identity_name: "Linus Torvalds",
+      identifier_display: "torvalds",
+      confidence: "high"
+    }
+  ];
+
+  const graph = buildKnowledgeGraph("torvalds", "username", entities, evidence);
+  assert.ok(graph.nodes.length >= 3);
+  assert.ok(graph.edges.length >= 2);
+  const types = graph.nodes.map(n => n.type);
+  assert.ok(types.includes("target"));
+  assert.ok(types.includes("platform"));
+  assert.ok(types.includes("email"));
+});
+
+test("ai summary generates executive briefing, threat score, and pivots", () => {
+  const entities = {
+    names: ["Linus Torvalds"],
+    emails: ["torvalds@linux-foundation.org"]
+  };
+  const evidence = [
+    {
+      provider: "GitHub",
+      category: "identity",
+      profile_url: "https://github.com/torvalds",
+      status: "candidate",
+      confidence: "high"
+    }
+  ];
+  const threatMatrix = {
+    overall_threat_score: 25,
+    risk_level: "low",
+    level: "LOW"
+  };
+
+  const ai = generateAISummary("torvalds", "username", entities, evidence, threatMatrix);
+  assert.ok(ai.executive_summary.length > 20);
+  assert.equal(typeof ai.threat_radar.score, "number");
+  assert.ok(ai.recommended_pivots.length >= 1);
+  assert.ok(ai.timeline.length >= 1);
+});
+
+test("report generator exports markdown, csv, and standalone html", () => {
+  const reportData = {
+    id: 999,
+    queryType: "username",
+    queryValue: "torvalds",
+    createdAt: new Date().toISOString(),
+    entities: { names: ["Linus Torvalds"], emails: ["torvalds@linux-foundation.org"] },
+    summary: { total: 1, candidates: 1, providers: 1 },
+    threatMatrix: { overall_threat_score: 20, risk_level: "low" },
+    evidence: [
+      {
+        provider: "GitHub",
+        category: "identity",
+        profile_url: "https://github.com/torvalds",
+        status: "candidate",
+        identity_name: "Linus Torvalds",
+        identifier_display: "torvalds",
+        confidence: "high",
+        checked_at: new Date().toISOString()
+      }
+    ]
+  };
+
+  const md = generateMarkdownReport(reportData);
+  assert.ok(md.includes("# ShadowTrace OSINT Intelligence Report"));
+  assert.ok(md.includes("Linus Torvalds"));
+
+  const csv = generateCSVReport(reportData);
+  assert.ok(csv.includes("Provider,Category,Status"));
+  assert.ok(csv.includes('"GitHub"'));
+
+  const html = generateHTMLReport(reportData);
+  assert.ok(html.includes("<!DOCTYPE html>"));
+  assert.ok(html.includes("ShadowTrace"));
+  assert.ok(html.includes("Linus Torvalds"));
+});
+
