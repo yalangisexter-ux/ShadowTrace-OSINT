@@ -26,6 +26,16 @@ The existing Worker and D1 binding are retained. The evidence-quality correction
 | Cryptocurrency | Address-format recognition; live Bitcoin and Ethereum public-ledger reads | Format recognition is not checksum/ownership verification; no wallet clustering or AML clearance |
 | Metadata | Hash of supplied text/data-URL bytes and embedded text indicators | No arbitrary remote URL fetch; no synthetic EXIF, GPS, camera, or document-author data |
 
+## OSINT Toolbox
+
+The web UI includes a searchable OSINT-focused toolbox inspired by the discovery experience in [Z4nzu/HackingTool](https://github.com/Z4nzu/hackingtool). The catalog is a curated subset adapted from its [tool catalog](https://github.com/Z4nzu/hackingtool/blob/master/docs/TOOLS.md), pinned to upstream commit `c3a858990f1f772e5c59f10c51f1a7aeb888ef23`. HackingTool is MIT-licensed; its copyright and license notice are retained in the upstream repository. Third-party tools keep their own licenses and terms.
+
+- **Native / operational here:** seven existing ShadowTrace collectors (domain, IP, email, username, phone normalization, crypto signals, and metadata inspection). “Operational” means the existing ShadowTrace module is callable from this app; it does not mean the third-party HackingTool project is embedded or running.
+- **External reference only:** curated projects such as theHarvester, Maigret, SpiderFoot, ReconSpider, Amass, Subfinder, ExifTool, and others link to their upstream maintainers. The Cloudflare Worker does not clone, install, or execute these Linux/Python tools.
+- The catalog deliberately excludes offensive tool execution and does not import third-party source code. It is a discovery interface, not a remote command runner.
+
+The catalog source and adapted subset are stored in `frontend/osint-tools.json`; the UI fetches this static asset and labels each entry as either a native ShadowTrace module or an external reference.
+
 ## Evidence semantics
 
 - `observed`: a provider or deterministic parser returned the stated technical fact.
