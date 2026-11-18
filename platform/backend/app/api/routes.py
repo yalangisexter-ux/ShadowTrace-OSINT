@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException
 
@@ -27,19 +27,19 @@ async def list_plugins() -> dict:
 async def collect_domain(request: CollectionRequest) -> CollectionResult:
     from app.collectors.domain import DomainCollector
 
-    started = datetime.now(timezone.utc)
+    started = datetime.now(UTC)
     collector = registry.get("domain.passive")
     try:
         async with _semaphore:
             observations = await collector.collect(request.target)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail="Collection failed; inspect server logs.") from exc
+    except (TimeoutError, OSError) as exc:
+        raise HTTPException(status_code=502, detail="Collection provider timed out or was unavailable.") from exc
     return CollectionResult(
         collector=collector.name,
         target=DomainCollector.normalize_target(request.target),
         observations=observations,
         started_at=started,
-        completed_at=datetime.now(timezone.utc),
+        completed_at=datetime.now(UTC),
     )
