@@ -1,8 +1,7 @@
 /**
  * Knowledge Graph & Entity Relationship Engine
- * Builds interconnected graph models linking targets, identities,
- * recovery accounts, telecom carriers, IP geolocations, blockchain addresses,
- * and candidate platform profiles.
+ * Builds a provenance-aware graph of the target, source-returned indicators,
+ * candidate profiles, and observed technical facts. Edges are leads, not proof.
  */
 
 export interface GraphNode {
@@ -95,7 +94,6 @@ export function buildKnowledgeGraph(
     category: `Target (${searchType.toUpperCase()})`,
     avatar: entities.profile_pictures?.[0],
     details: `Root investigation target of type ${searchType}.`,
-    risk: "low",
   });
 
   // 2. Discovered Identity Names
@@ -107,11 +105,10 @@ export function buildKnowledgeGraph(
         id: nameId,
         label: name,
         type: "username",
-        category: "Discovered Identity",
+        category: "Name Indicator",
         avatar: entities.profile_pictures?.[idx] || entities.profile_pictures?.[0],
         details: `Name string returned by a source. Its association with the target is not independently verified.`,
-        risk: "low",
-      });
+        });
       addEdge(targetId, nameId, "identifies_as", "Identifies As");
     });
   }
@@ -127,9 +124,8 @@ export function buildKnowledgeGraph(
         type: "username",
         category: "Digital Handle",
         details: `Discovered public username handle @${u}.`,
-        risk: "low",
-      });
-      addEdge(targetId, uId, "known_handle", "Known Handle");
+        });
+      addEdge(targetId, uId, "username_indicator", "Username Indicator", "medium");
     });
   }
 
@@ -144,7 +140,6 @@ export function buildKnowledgeGraph(
         type: "email",
         category: "Email Indicator",
         details: "Email string returned by a source; mailbox control and relationship to the target are not established.",
-        risk: "medium",
       });
       addEdge(targetId, eId, "email_indicator", "Email Indicator", "medium");
     });
@@ -161,7 +156,6 @@ export function buildKnowledgeGraph(
         type: "phone",
         category: "Phone Indicator",
         details: "Phone-like value returned by a source; subscriber identity and relationship to the target are not established.",
-        risk: "medium",
       });
       addEdge(targetId, pId, "phone_indicator", "Phone Indicator", "medium");
     });
@@ -182,14 +176,13 @@ export function buildKnowledgeGraph(
       icon: cand.domain || `${cand.provider.toLowerCase()}.com`,
       avatar,
       details: cand.detail || cand.identifier_display || `Candidate profile lead from ${cand.provider}; ownership is not established.`,
-      risk: cand.confidence === "high" ? "low" : "medium",
     });
 
     addEdge(targetId, platId, "candidate_profile", "Candidate Profile", cand.confidence === "high" ? "high" : "medium");
 
     // Cross-link platform to discovered name if identity_name is present
     if (cand.identity_name && nodesMap.has(`name:${cand.identity_name}`)) {
-      addEdge(platId, `name:${cand.identity_name}`, "displays_name", "Displays Name");
+      addEdge(platId, `name:${cand.identity_name}`, "candidate_name_association", "Candidate Name Association", "medium");
     }
   });
 
