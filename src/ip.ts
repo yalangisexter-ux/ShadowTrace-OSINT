@@ -1,9 +1,8 @@
 /**
- * IP Intelligence & Geolocation Engine
- * Free, live IP intelligence covering GeoIP, ASN, ISP, Reverse DNS,
- * Cloud provider detection, and threat reputation.
+ * IP intelligence based only on successful provider responses.
+ * GeoIP is approximate network geolocation, not a person's location.
+ * Shodan InternetDB is an indexed snapshot, not a live port scan.
  */
-
 export interface IPResult {
   ip: string;
   type: "IPv4" | "IPv6";
@@ -36,90 +35,81 @@ export interface IPResult {
     name: string;
     category: string;
     url: string;
-    status: "verified" | "candidate" | "inconclusive";
+    status: "observed" | "candidate" | "not_found" | "inconclusive";
     verified?: boolean;
+    confidence?: "high" | "medium" | "low" | "none";
     identityName?: string;
     identifierDisplay?: string;
     fieldsCount?: number;
     extraFields?: Record<string, string>;
     detail: string;
     icon: string;
+    httpStatus?: number | null;
   }[];
 }
 
-const BOGON_RANGES = [
-  /^127\./,
-  /^10\./,
-  /^172\.(1[6-9]|2[0-9]|3[0-1])\./,
-  /^192\.168\./,
-  /^169\.254\./,
-  /^0\./,
-  /^::1$/,
-  /^fc00:/,
-  /^fe80:/
-];
-
-const KNOWN_CLOUD_PROVIDERS: Record<string, string> = {
-  "AS13335": "Cloudflare Edge",
-  "AS16509": "Amazon Web Services (AWS)",
-  "AS14618": "Amazon Web Services (AWS)",
-  "AS15169": "Google Cloud Platform (GCP)",
-  "AS396982": "Google Cloud Platform (GCP)",
-  "AS8075": "Microsoft Azure",
-  "AS14061": "DigitalOcean",
-  "AS24940": "Hetzner Online",
-  "AS16276": "OVHcloud",
-  "AS63949": "Akamai / Linode",
-  "AS20473": "Choopa / Vultr",
-  "AS31898": "Oracle Cloud Infrastructure",
+const KNOWN_CLOUD_PROVIDERS: Record<number, string> = {
+  13335: "Cloudflare",
+  16509: "Amazon Web Services",
+  14618: "Amazon Web Services",
+  15169: "Google",
+  396982: "Google Cloud",
+  8075: "Microsoft",
+  14061: "DigitalOcean",
+  24940: "Hetzner",
+  16276: "OVHcloud",
+  63949: "Akamai / Linode",
+  20473: "Vultr",
+  31898: "Oracle Cloud",
 };
 
 export function isBogonIP(ip: string): boolean {
-  return BOGON_RANGES.some(r => r.test(ip));
-}
-
-// Reverse DNS PTR query via Google DoH
-async function queryReverseDns(ip: string): Promise<string | undefined> {
-  try {
-    const isV4 = ip.includes(".");
-    let arpaName = "";
-    if (isV4) {
-      arpaName = ip.split(".").reverse().join(".") + ".in-addr.arpa";
-    } else {
-      // IPv6 reverse nibble format
-      const expanded = expandIPv6(ip);
-      arpaName = expanded.replace(/:/g, "").split("").reverse().join(".") + ".ip6.arpa";
-    }
-
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 3500);
-    const res = await fetch(`https://dns.google/resolve?name=${encodeURIComponent(arpaName)}&type=PTR`, {
-      headers: { "Accept": "application/dns-json" },
-      signal: controller.signal
-    });
-    clearTimeout(timer);
-    if (!res.ok) return undefined;
-    const data: any = await res.json();
-    if (data.Answer && data.Answer.length > 0) {
-      return data.Answer[0].data?.replace(/\.$/, "");
-    }
-  } catch {
-    return undefined;
+  if (ip.includes(".")) {
+    const parts = ip.split(".").map(Number);
+    if (parts.length !== 4 || parts.some(n => !Number.isInteger(n) || n < 0 || n > 255)) return true;
+    const [a, b, c] = parts;
+    return a === 0 || a === 10 || a === 127 || a >= 224 ||
+      (a === 100 && b >= 64 && b <= 127) ||
+      (a === 169 && b === 254) ||
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && b === 168) ||
+      (a === 192 && b === 0 && c === 2) ||
+      (a === 198 && (b === 18 || b === 19 || b === 51 && c === 100)) ||
+      (a === 203 && b === 0 && c === 113);
   }
-  return undefined;
+  const v6 = ip.toLowerCase();
+  return v6 === "::" || v6 === "::1" || v6.startsWith("fc") || v6.startsWith("fd") ||
+    v6.startsWith("fe80:") || v6.startsWith("ff") || v6.startsWith("2001:db8:");
 }
 
 function expandIPv6(ip: string): string {
-  const parts = ip.split("::");
-  let left = parts[0] ? parts[0].split(":") : [];
-  let right = parts[1] ? parts[1].split(":") : [];
-  const missing = 8 - (left.length + right.length);
-  const mid = Array(missing).fill("0000");
-  const full = [...left, ...mid, ...right].map(seg => seg.padStart(4, "0"));
-  return full.join(":");
+  const halves = ip.split("::");
+  const left = halves[0] ? halves[0].split(":") : [];
+  const right = halves[1] ? halves[1].split(":") : [];
+  const missing = Math.max(0, 8 - left.length - right.length);
+  return [...left, ...Array(missing).fill("0"), ...right].map(x => x.padStart(4, "0")).join(":");
 }
 
-interface ShodanInternetDBResult {
+async function queryReverseDns(ip: string): Promise<{ hostname?: string; status: number | null; ok: boolean }> {
+  try {
+    const arpa = ip.includes(".")
+      ? ip.split(".").reverse().join(".") + ".in-addr.arpa"
+      : expandIPv6(ip).replace(/:/g, "").split("").reverse().join(".") + ".ip6.arpa";
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 4000);
+    try {
+      const res = await fetch(`https://dns.google/resolve?name=${encodeURIComponent(arpa)}&type=PTR`, {
+        headers: { Accept: "application/dns-json" }, signal: controller.signal,
+      });
+      if (!res.ok) return { status: res.status, ok: false };
+      const data = await res.json() as { Answer?: Array<{ data?: string }> };
+      const hostname = data.Answer?.[0]?.data?.replace(/\.$/, "");
+      return { hostname, status: res.status, ok: true };
+    } finally { clearTimeout(timer); }
+  } catch { return { status: null, ok: false }; }
+}
+
+interface ShodanData {
   ip?: string;
   ports?: number[];
   hostnames?: string[];
@@ -127,254 +117,221 @@ interface ShodanInternetDBResult {
   tags?: string[];
   vulns?: string[];
 }
-
-/**
- * Shodan InternetDB Query (Free, zero-key public API from Shodan)
- * Exposes live open ports, hostnames, CPEs, and CVE vulnerabilities
- */
-async function queryShodanInternetDB(ip: string): Promise<ShodanInternetDBResult | null> {
+async function queryShodan(ip: string): Promise<{ data: ShodanData | null; status: number | null; ok: boolean }> {
   try {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 3500);
-    const res = await fetch(`https://internetdb.shodan.io/${encodeURIComponent(ip)}`, {
-      headers: { "User-Agent": "ShadowTrace-OSINT/1.0" },
-      signal: controller.signal
-    });
-    clearTimeout(timer);
-    if (!res.ok) return null;
-    return await res.json() as ShodanInternetDBResult;
-  } catch {
-    return null;
-  }
+    const timer = setTimeout(() => controller.abort(), 4500);
+    try {
+      const res = await fetch(`https://internetdb.shodan.io/${encodeURIComponent(ip)}`, {
+        headers: { "User-Agent": "ShadowTrace-OSINT/2.1" }, signal: controller.signal,
+      });
+      if (res.status === 404) return { data: null, status: 404, ok: true };
+      if (!res.ok) return { data: null, status: res.status, ok: false };
+      const data = await res.json() as ShodanData;
+      if (data.ip && data.ip !== ip) return { data: null, status: res.status, ok: false };
+      return { data, status: res.status, ok: true };
+    } finally { clearTimeout(timer); }
+  } catch { return { data: null, status: null, ok: false }; }
+}
+
+async function queryGeoIp(ip: string): Promise<{ data: any | null; status: number | null; ok: boolean }> {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 4500);
+    try {
+      const res = await fetch(`https://ipwho.is/${encodeURIComponent(ip)}`, {
+        headers: { "User-Agent": "ShadowTrace-OSINT/2.1" }, signal: controller.signal,
+      });
+      if (!res.ok) return { data: null, status: res.status, ok: false };
+      const data = await res.json() as any;
+      if (data.success !== true || (data.ip && data.ip !== ip)) return { data: null, status: res.status, ok: false };
+      return { data, status: res.status, ok: true };
+    } finally { clearTimeout(timer); }
+  } catch { return { data: null, status: null, ok: false }; }
 }
 
 export async function analyzeIP(input: string): Promise<IPResult> {
   const ip = input.trim();
   const isV4 = ip.includes(".");
-  const type: "IPv4" | "IPv6" = isV4 ? "IPv4" : "IPv6";
+  if (isBogonIP(ip) && !ip.includes(".") && !ip.includes(":")) throw new Error("Invalid IP address.");
+  const type: IPResult["type"] = isV4 ? "IPv4" : "IPv6";
   const isBogon = isBogonIP(ip);
 
-  let country = "Unknown Country";
+  let country = "Unknown";
   let countryCode = "XX";
-  let region = "Global Network";
-  let city = "Unknown City";
-  let postal: string | undefined = undefined;
-  let latitude: number | undefined = undefined;
-  let longitude: number | undefined = undefined;
-  let timezone = "UTC";
-  let asn: number | undefined = undefined;
-  let asnOrg: string | undefined = undefined;
-  let isp: string | undefined = undefined;
-  let cloudProvider: string | undefined = undefined;
-  let flagUrl: string | undefined = undefined;
+  let region = "Unknown";
+  let city = "Unknown";
+  let postal: string | undefined;
+  let latitude: number | undefined;
+  let longitude: number | undefined;
+  let timezone = "Unknown";
+  let asn: number | undefined;
+  let asnOrg: string | undefined;
+  let isp: string | undefined;
+  let cloudProvider: string | undefined;
+  let flagUrl: string | undefined;
 
-  // Run live network queries concurrently: Geolocation, PTR DNS, and Shodan InternetDB
-  const [geoRes, rawHostname, shodanRes] = await Promise.all([
-    !isBogon ? (async () => {
-      try {
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 3500);
-        const res = await fetch(`https://ipwho.is/${encodeURIComponent(ip)}`, {
-          headers: { "User-Agent": "ShadowTrace-OSINT/1.0" },
-          signal: controller.signal
-        });
-        clearTimeout(timer);
-        if (!res.ok) return null;
-        return await res.json() as any;
-      } catch {
-        return null;
-      }
-    })() : Promise.resolve(null),
-    queryReverseDns(ip),
-    !isBogon ? queryShodanInternetDB(ip) : Promise.resolve(null)
-  ]);
+  const platforms: IPResult["platforms"] = [];
+  let hostname: string | undefined;
 
-  const hostname = rawHostname || (shodanRes?.hostnames && shodanRes.hostnames.length > 0 ? shodanRes.hostnames[0] : null);
+  if (isBogon) {
+    platforms.push({
+      name: "PRIVATE / RESERVED IP CLASSIFICATION",
+      category: "Address classification",
+      url: "",
+      status: "observed",
+      verified: true,
+      confidence: "high",
+      identifierDisplay: ip,
+      detail: "The address is in a private, shared, loopback, link-local, documentation, multicast, or otherwise non-public range. External intelligence lookups were skipped.",
+      icon: "local-ip-classifier",
+    });
+  } else {
+    const [geo, ptr, shodan] = await Promise.all([queryGeoIp(ip), queryReverseDns(ip), queryShodan(ip)]);
+    hostname = ptr.hostname || shodan.data?.hostnames?.[0];
 
-  if (geoRes && geoRes.success) {
-    country = geoRes.country || country;
-    countryCode = geoRes.country_code || countryCode;
-    region = geoRes.region || region;
-    city = geoRes.city || city;
-    postal = geoRes.postal;
-    latitude = geoRes.latitude;
-    longitude = geoRes.longitude;
-    timezone = geoRes.timezone?.id || timezone;
-    asn = geoRes.connection?.asn;
-    asnOrg = geoRes.connection?.org;
-    isp = geoRes.connection?.isp;
-    flagUrl = geoRes.flag?.img;
+    if (geo.ok && geo.data) {
+      const g = geo.data;
+      country = g.country || country;
+      countryCode = g.country_code || countryCode;
+      region = g.region || region;
+      city = g.city || city;
+      postal = g.postal;
+      latitude = typeof g.latitude === "number" ? g.latitude : undefined;
+      longitude = typeof g.longitude === "number" ? g.longitude : undefined;
+      timezone = g.timezone?.id || timezone;
+      asn = typeof g.connection?.asn === "number" ? g.connection.asn : undefined;
+      asnOrg = g.connection?.org || undefined;
+      isp = g.connection?.isp || undefined;
+      cloudProvider = asn ? KNOWN_CLOUD_PROVIDERS[asn] : undefined;
+      flagUrl = g.flag?.img;
 
-    if (asn) {
-      const asnKey = `AS${asn}`;
-      if (KNOWN_CLOUD_PROVIDERS[asnKey]) {
-        cloudProvider = KNOWN_CLOUD_PROVIDERS[asnKey];
-      } else if (asnOrg) {
-        for (const [key, name] of Object.entries(KNOWN_CLOUD_PROVIDERS)) {
-          if (asnOrg.toLowerCase().includes(name.toLowerCase().split(" ")[0])) {
-            cloudProvider = name;
-            break;
-          }
-        }
-      }
+      platforms.push({
+        name: "IP GEOLOCATION / NETWORK REGISTRATION",
+        category: "Network location",
+        url: latitude !== undefined && longitude !== undefined ? `https://www.google.com/maps?q=${latitude},${longitude}` : "https://ipwho.is/",
+        status: "observed",
+        verified: true,
+        confidence: "medium",
+        identityName: [city, region, country].filter(Boolean).join(", "),
+        identifierDisplay: `${country} (${countryCode}) · ${asn ? `AS${asn}` : "ASN unavailable"}`,
+        fieldsCount: 7,
+        extraFields: {
+          "Country": `${country} (${countryCode})`,
+          "Region": region,
+          "City": city,
+          "Coordinates": latitude !== undefined && longitude !== undefined ? `${latitude}, ${longitude}` : "Not returned",
+          "Timezone": timezone,
+          ...(asn ? { "ASN": `AS${asn}` } : {}),
+          ...(asnOrg ? { "ASN organization": asnOrg } : {}),
+          ...(isp ? { "ISP": isp } : {}),
+          ...(cloudProvider ? { "Known ASN provider": cloudProvider } : {}),
+          ...(postal ? { "Postal code": String(postal) } : {}),
+        },
+        detail: "Approximate GeoIP and network-registration data returned by ipwho.is. This locates the network endpoint, not a person or device owner.",
+        icon: "ipwho.is",
+        httpStatus: geo.status,
+      });
+    } else {
+      platforms.push({
+        name: "IP GEOLOCATION",
+        category: "Network location",
+        url: "https://ipwho.is/",
+        status: "inconclusive",
+        verified: false,
+        confidence: "none",
+        identifierDisplay: "No successful GeoIP response",
+        detail: "The GeoIP provider did not return a valid result for this address; no location is inferred.",
+        icon: "ipwho.is",
+        httpStatus: geo.status,
+      });
+    }
+
+    if (ptr.hostname) {
+      platforms.push({
+        name: "REVERSE DNS (PTR)",
+        category: "DNS",
+        url: `https://dns.google/resolve?name=${encodeURIComponent(ip)}&type=PTR`,
+        status: "observed",
+        verified: true,
+        confidence: "high",
+        identityName: ptr.hostname,
+        identifierDisplay: ptr.hostname,
+        extraFields: { "PTR hostname": ptr.hostname, "Resolver": "Google Public DNS" },
+        detail: "A PTR record was returned for this IP address. Reverse DNS does not establish the owner of the host.",
+        icon: "dns.google",
+        httpStatus: ptr.status,
+      });
+    } else if (!ptr.ok) {
+      platforms.push({
+        name: "REVERSE DNS (PTR)",
+        category: "DNS",
+        url: "https://dns.google/",
+        status: "inconclusive",
+        verified: false,
+        confidence: "none",
+        detail: "Reverse DNS lookup failed; no hostname is inferred.",
+        icon: "dns.google",
+        httpStatus: ptr.status,
+      });
+    }
+
+    if (shodan.data && (shodan.data.ports?.length || shodan.data.vulns?.length || shodan.data.hostnames?.length || shodan.data.cpes?.length)) {
+      platforms.push({
+        name: "SHODAN INTERNETDB",
+        category: "Indexed attack-surface data",
+        url: `https://www.shodan.io/host/${encodeURIComponent(ip)}`,
+        status: "observed",
+        verified: true,
+        confidence: "high",
+        identifierDisplay: `${shodan.data.ports?.length || 0} indexed port(s) · ${shodan.data.vulns?.length || 0} CVE(s)`,
+        fieldsCount: 5,
+        extraFields: {
+          "Indexed ports": shodan.data.ports?.length ? shodan.data.ports.join(", ") : "None returned",
+          "CVE identifiers": shodan.data.vulns?.length ? shodan.data.vulns.join(", ") : "None returned",
+          "Hostnames": shodan.data.hostnames?.join(", ") || "None returned",
+          "CPEs": shodan.data.cpes?.join(", ") || "None returned",
+          "Tags": shodan.data.tags?.join(", ") || "None returned",
+        },
+        detail: "Shodan InternetDB returned indexed observations. These are not a live scan and may be stale; verify timestamps and services with the provider.",
+        icon: "shodan.io",
+        httpStatus: shodan.status,
+      });
+    } else if (!shodan.ok) {
+      platforms.push({
+        name: "SHODAN INTERNETDB",
+        category: "Indexed attack-surface data",
+        url: `https://www.shodan.io/host/${encodeURIComponent(ip)}`,
+        status: "inconclusive",
+        verified: false,
+        confidence: "none",
+        detail: "Shodan InternetDB did not return a successful lookup. No open-port or vulnerability conclusion is drawn.",
+        icon: "shodan.io",
+        httpStatus: shodan.status,
+      });
+    } else {
+      platforms.push({
+        name: "SHODAN INTERNETDB",
+        category: "Indexed attack-surface data",
+        url: `https://www.shodan.io/host/${encodeURIComponent(ip)}`,
+        status: "not_found",
+        verified: false,
+        confidence: "none",
+        detail: "Shodan InternetDB returned no indexed host record. This does not prove that the host has no exposed services.",
+        icon: "shodan.io",
+        httpStatus: shodan.status,
+      });
     }
   }
 
-  const entities: IPResult["entities"] = {
-    names: [hostname || ip, asnOrg || isp || `${country} Network`].filter(Boolean) as string[],
-    profile_pictures: [], // IP addresses have no personal profile pictures (flags are not avatars)
-    banners: [],
-    usernames: [],
-    emails: [],
-    phones: [],
-    first_seen: "IP Allocation Registry",
-    last_seen: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
-  };
-
-  const platforms: IPResult["platforms"] = [];
-
-  // 1. Geolocation Platform Card
-  platforms.push({
-    name: "IP GEOLOCATION",
-    category: "Network Location",
-    url: latitude && longitude ? `https://www.google.com/maps?q=${latitude},${longitude}` : `https://ipwhois.io/`,
-    status: "candidate",
-    verified: true,
-    identityName: `${city}, ${region}, ${country}`,
-    identifierDisplay: `${city}, ${country} (${countryCode})`,
-    fieldsCount: 5,
-    extraFields: {
-      "Country": `${country} (${countryCode})`,
-      "Region / State": region,
-      "City": city,
-      "Coordinates": latitude && longitude ? `${latitude.toFixed(4)}, ${longitude.toFixed(4)}` : "Unavailable",
-      "Timezone": timezone,
-      ...(postal ? { "Postal Code": postal } : {})
-    },
-    detail: `Geographic location resolved to ${city}, ${region}, ${country}. Timezone: ${timezone}.`,
-    icon: "ipwhois.io"
-  });
-
-  // 2. ASN & BGP Routing
-  if (asn || isp || asnOrg) {
-    platforms.push({
-      name: "BGP / AUTONOMOUS SYSTEM",
-      category: "Routing & ISP",
-      url: asn ? `https://bgpview.io/asn/${asn}` : `https://bgp.he.net/`,
-      status: "candidate",
-      verified: true,
-      identityName: asn ? `AS${asn} (${asnOrg || isp})` : (asnOrg || isp || "Autonomous System"),
-      identifierDisplay: `AS${asn || '—'} · ${isp || asnOrg || 'Global ISP'}`,
-      fieldsCount: 4,
-      extraFields: {
-        "ASN Number": asn ? `AS${asn}` : "Unallocated",
-        "Organization": asnOrg || "Unknown Org",
-        "ISP Network": isp || "Unknown ISP",
-        "Route Registry": "IANA / Regional Internet Registry"
-      },
-      detail: `Autonomous System AS${asn || '—'} operated by ${asnOrg || isp || 'upstream carrier'}.`,
-      icon: "bgpview.io"
-    });
-  }
-
-  // 3. Cloud & Hosting Infrastructure
-  platforms.push({
-    name: "HOSTING & CLOUD INFRASTRUCTURE",
-    category: "Infrastructure",
-    url: `https://www.peeringdb.com/`,
-    status: "candidate",
-    verified: true,
-    identityName: cloudProvider || (asnOrg ? `${asnOrg} Infrastructure` : "Public Datacenter"),
-    identifierDisplay: cloudProvider ? `Cloud: ${cloudProvider}` : `ISP: ${isp || 'Datacenter / Dedicated'}`,
-    fieldsCount: 3,
-    extraFields: {
-      "Hosting Tier": cloudProvider ? "Major Hyper-Cloud Platform" : "Dedicated Datacenter / Transit",
-      "Provider": cloudProvider || asnOrg || isp || "Unknown",
-      "Bogon State": isBogon ? "WARNING: Private / Reserved IP Range" : "Routable Public IP"
-    },
-    detail: cloudProvider ? `Hosted within ${cloudProvider} infrastructure.` : `Assigned to ${asnOrg || isp || 'carrier network'}.`,
-    icon: "peeringdb.com"
-  });
-
-  // 4. Reverse DNS (PTR)
-  if (hostname) {
-    platforms.push({
-      name: "REVERSE DNS (PTR)",
-      category: "DNS Records",
-      url: `https://${hostname}`,
-      status: "candidate",
-      verified: true,
-      identityName: hostname,
-      identifierDisplay: `PTR: ${hostname}`,
-      fieldsCount: 2,
-      extraFields: {
-        "PTR Record": hostname,
-        "Reverse Resolver": "Google Public DNS (DoH)"
-      },
-      detail: `Reverse DNS pointer record maps ${ip} to fully-qualified hostname ${hostname}.`,
-      icon: "dns.google"
-    });
-  }
-
-  // 5. Live Shodan InternetDB Intelligence & Attack Surface Pivots
-  if (shodanRes && (shodanRes.ports?.length || shodanRes.vulns?.length || shodanRes.hostnames?.length)) {
-    platforms.push({
-      name: "SHODAN INTERNETDB (LIVE PORTS & VULNS)",
-      category: "Attack Surface",
-      url: `https://www.shodan.io/host/${encodeURIComponent(ip)}`,
-      status: "candidate",
-      verified: true,
-      identityName: `Shodan: ${ip}`,
-      identifierDisplay: `Open Ports: ${shodanRes.ports?.length || 0} · CVEs: ${shodanRes.vulns?.length || 0}`,
-      fieldsCount: 4,
-      extraFields: {
-        "Open Ports": shodanRes.ports?.length ? shodanRes.ports.join(", ") : "None detected",
-        "Known Vulnerabilities (CVEs)": shodanRes.vulns?.length ? shodanRes.vulns.join(", ") : "None detected",
-        "Hostnames": shodanRes.hostnames?.length ? shodanRes.hostnames.join(", ") : "None",
-        "Tags": shodanRes.tags?.length ? shodanRes.tags.join(", ") : "None"
-      },
-      detail: `Live Shodan InternetDB intelligence: ${shodanRes.ports?.length || 0} exposed network services, ${shodanRes.vulns?.length || 0} CVEs.`,
-      icon: "shodan.io"
-    });
-  } else {
-    platforms.push({
-      name: "SHODAN & THREAT PIVOTS",
-      category: "Attack Surface",
-      url: `https://www.shodan.io/host/${encodeURIComponent(ip)}`,
-      status: "candidate",
-      verified: true,
-      identifierDisplay: `Shodan IP: ${ip}`,
-      fieldsCount: 4,
-      extraFields: {
-        "Shodan Host Pivot": `https://www.shodan.io/host/${encodeURIComponent(ip)}`,
-        "Censys Search": `https://search.censys.io/hosts/${encodeURIComponent(ip)}`,
-        "VirusTotal Analysis": `https://www.virustotal.com/gui/ip-address/${encodeURIComponent(ip)}`,
-        "AbuseIPDB Reports": `https://www.abuseipdb.com/check/${encodeURIComponent(ip)}`
-      },
-      detail: `Threat intelligence, open port scanner, and abuse reputation pivots for ${ip}.`,
-      icon: "shodan.io"
-    });
-  }
-
   return {
-    ip,
-    type,
-    isBogon,
-    hostname: hostname || undefined,
-    country,
-    countryCode,
-    region,
-    city,
-    postal,
-    latitude,
-    longitude,
-    timezone,
-    asn,
-    asnOrg,
-    isp,
-    cloudProvider,
-    flagUrl,
-    entities,
+    ip, type, isBogon, hostname,
+    country, countryCode, region, city, postal, latitude, longitude, timezone,
+    asn, asnOrg, isp, cloudProvider, flagUrl,
+    entities: {
+      names: hostname ? [hostname] : [],
+      profile_pictures: [], banners: [], usernames: [], emails: [], phones: [],
+    },
     platforms,
   };
 }
