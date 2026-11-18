@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, Protocol
 
 from pydantic import BaseModel, Field
@@ -14,7 +14,7 @@ class Observation(BaseModel):
     relation: str | None = None
     source: str
     source_url: str | None = None
-    observed_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    observed_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     confidence: float = Field(default=0.5, ge=0, le=1)
     attributes: dict[str, Any] = Field(default_factory=dict)
 
