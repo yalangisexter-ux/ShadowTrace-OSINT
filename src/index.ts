@@ -27,7 +27,9 @@ import { generateAISummary } from "./ai.ts";
 import { generateMarkdownReport, generateCSVReport, generateHTMLReport } from "./report.ts";
 
 function getSecretKey(env: Env): string {
-  return env.SECRET_KEY || "fallback-secret-key-32-chars-long-minimum";
+  const key = env.SECRET_KEY || "";
+  if (key.length < 32) throw new Error("Worker SECRET_KEY is not configured with at least 32 characters.");
+  return key;
 }
 
 function validatePasswordStrength(password: string): string | null {
@@ -158,60 +160,53 @@ async function requireAuth(c: any): Promise<UserRow> {
 
 // Threat Matrix calculation
 function calculateThreatMatrix(results: any[], queryType: string) {
-  const verified = results.filter((r) => r.status === "candidate" && r.verified === true);
-  const verifiedCount = verified.length;
-  const breachCount = results.filter(r => r.verified === true && r.status === "candidate" && /breach|pwned|leak/i.test(r.provider)).length;
-  let baseScore = 0;
+  const candidates = results.filter((r) => r.status === "candidate");
+  const observed = results.filter((r) => r.status === "observed");
+  const vulnerabilityFindings = observed.filter((r) => {
+    const cves = r.extra_fields?.["CVE identifiers"] || r.extra_fields?.["Known Vulnerabilities (CVEs)"];
+    return /shodan/i.test(r.provider || "") && Boolean(cves) && !["None returned", "None detected"].includes(String(cves));
+  });
+  const breachFindings = observed.filter((r) => {
+    const count = Number(r.extra_fields?.["Breach count"] || r.extra_fields?.["Exposure count"] || 0);
+    return /hibp|breach|pwned/i.test(r.provider || "") && Number.isFinite(count) && count > 0;
+  });
 
-  if (queryType === "domain") {
-    const hasSpfIssue = results.some((r) => r.detail && r.detail.includes("MISSING"));
-    baseScore = hasSpfIssue ? 65 : 20;
-  } else if (queryType === "ip") {
-    const isBogon = results.some(r => r.extra_fields && r.extra_fields["Bogon State"] && r.extra_fields["Bogon State"].includes("WARNING"));
-    const hasVulns = results.some(r => r.extra_fields && r.extra_fields["Known Vulnerabilities (CVEs)"] && r.extra_fields["Known Vulnerabilities (CVEs)"] !== "None detected");
-    const openPortsField = results.find(r => r.extra_fields && r.extra_fields["Open Ports"])?.extra_fields["Open Ports"];
-    const openPortsCount = (openPortsField && openPortsField !== "None detected") ? openPortsField.split(",").length : 0;
+  // Do not turn missing SPF, open ports alone, number parsing, or profile counts
+  // into a risk score. A score is assessed only when an explicit source-backed
+  // vulnerability or breach indicator exists.
+  const assessed = vulnerabilityFindings.length > 0 || breachFindings.length > 0;
+  const score = vulnerabilityFindings.length
+    ? Math.min(100, 75 + vulnerabilityFindings.length * 5)
+    : breachFindings.length
+      ? Math.min(100, 65 + breachFindings.length * 5)
+      : 0;
 
-    if (isBogon) {
-      baseScore = 70;
-    } else if (hasVulns) {
-      baseScore = 80;
-    } else if (openPortsCount > 10) {
-      baseScore = 40;
-    } else if (openPortsCount > 0) {
-      baseScore = 20;
-    } else {
-      baseScore = 15;
-    }
-  } else if (queryType === "phone") {
-    baseScore = Math.min(80, 20 + breachCount * 30);
-  } else if (queryType === "email") {
-    baseScore = Math.min(85, 20 + breachCount * 30 + (verifiedCount > 3 ? 10 : 0));
-  } else {
-    baseScore = Math.min(85, verifiedCount * 5 + breachCount * 25 + 15);
+  let level = "UNKNOWN";
+  if (assessed) {
+    level = score >= 75 ? "CRITICAL" : score >= 55 ? "HIGH" : score >= 35 ? "ELEVATED" : "LOW";
   }
 
-  let threatLevel: "LOW" | "MODERATE" | "ELEVATED" | "HIGH" | "CRITICAL" = "LOW";
-  if (baseScore >= 75) threatLevel = "CRITICAL";
-  else if (baseScore >= 55) threatLevel = "HIGH";
-  else if (baseScore >= 35) threatLevel = "ELEVATED";
-  else if (baseScore >= 15) threatLevel = "MODERATE";
-
   return {
-    score: baseScore,
-    overall_threat_score: baseScore,
-    level: threatLevel,
-    risk_level: threatLevel.toLowerCase(),
-    exposure_summary: `${verifiedCount} high-confidence public identity signals; ${results.length - verifiedCount} unverified records excluded`,
-    credential_reuse_risk: verifiedCount > 2 ? "Potential (multiple verified public accounts; password reuse not established)" : "Not established",
-    phishing_surface: queryType === "email" || queryType === "phone" ? "Potential communication vector; not proof of compromise" : "Moderate",
+    score,
+    overall_threat_score: score,
+    level,
+    risk_level: assessed ? level.toLowerCase() : "unassessed",
+    exposure_summary: assessed
+      ? `${vulnerabilityFindings.length} source-reported vulnerability indicator(s), ${breachFindings.length} source-reported breach indicator(s); review each source record.`
+      : "Threat assessment unavailable: no confirmed vulnerability or breach indicator was returned. This is not a clean bill of health.",
+    credential_reuse_risk: breachFindings.length
+      ? "Source-reported exposure indicator exists; password reuse is not established."
+      : "Not assessed; no credential-reuse conclusion is available.",
+    phishing_surface: "Not assessed by the current collectors.",
+    observed_count: observed.length,
+    candidate_count: candidates.length,
+    query_type: queryType,
   };
 }
 
 // Health check endpoint
 app.get("/healthz", async (c) => {
-  const secretKey = getSecretKey(c.env);
-  const secretOk = secretKey.length >= 32;
+  const secretOk = typeof c.env.SECRET_KEY === "string" && c.env.SECRET_KEY.length >= 32;
   let dbOk = false;
   if (c.env.DB) {
     try {
