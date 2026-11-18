@@ -25,7 +25,7 @@ class DomainCollector:
         target = value.strip().lower().rstrip(".")
         if "://" in target or "/" in target or "@" in target or ":" in target:
             raise ValueError("Provide a bare public domain name, not a URL, email, IP, or host:port.")
-        if len(target) > 253 or not re.fullmatch(r"(?=.{1,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}", target):
+        if len(target) > 253 or not re.fullmatch(r"(?=.{1,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}", target):
             raise ValueError("Target must be a valid fully-qualified public DNS name.")
         try:
             ipaddress.ip_address(target)
