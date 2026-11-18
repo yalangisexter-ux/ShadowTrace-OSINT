@@ -1,0 +1,37 @@
+services:
+  api:
+    build:
+      context: ./backend
+    env_file: .env
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: shadowtrace
+      POSTGRES_USER: shadowtrace
+      POSTGRES_PASSWORD: shadowtrace
+    volumes:
+      - shadowtrace_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shadowtrace -d shadowtrace"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - shadowtrace_redisdata:/data
+
+volumes:
+  shadowtrace_pgdata:
+  shadowtrace_redisdata:
