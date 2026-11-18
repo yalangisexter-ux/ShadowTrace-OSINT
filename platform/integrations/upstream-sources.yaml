@@ -1,0 +1,72 @@
+# Upstream projects are referenced as optional integrations, not vendored code.
+# Before enabling an adapter, pin a release/commit and review its license, dependencies,
+# network behavior, data handling, and upstream terms.
+sources:
+  - id: public-apis
+    repository: https://github.com/public-apis/public-apis
+    kind: api-catalog
+    status: catalog-reference
+  - id: public-api-lists
+    repository: https://github.com/public-api-lists/public-api-lists
+    kind: api-catalog
+    status: catalog-reference
+  - id: free-public-apis
+    repository: https://github.com/BM804/free-public-apis
+    kind: api-catalog
+    status: catalog-reference
+  - id: api-mega-list
+    repository: https://github.com/cporter202/API-mega-list
+    kind: api-catalog
+    status: catalog-reference
+  - id: apis-hub
+    repository: https://github.com/kabishS/APIs-Hub
+    kind: api-catalog
+    status: catalog-reference
+  - id: awesome-osint
+    repository: https://github.com/jivoi/awesome-osint
+    kind: resource-catalog
+    status: catalog-reference
+  - id: osint-framework
+    repository: https://github.com/lockfale/OSINT-Framework
+    kind: resource-catalog
+    status: catalog-reference
+  - id: spiderfoot
+    repository: https://github.com/smicallef/spiderfoot
+    kind: external-tool
+    adapter: cli
+    status: planned
+  - id: recon-ng
+    repository: https://github.com/lanmaster53/recon-ng
+    kind: external-tool
+    adapter: cli
+    status: planned
+  - id: theharvester
+    repository: https://github.com/laramies/theHarvester
+    kind: external-tool
+    adapter: cli
+    status: planned
+  - id: sherlock
+    repository: https://github.com/sherlock-project/sherlock
+    kind: external-tool
+    adapter: cli
+    status: planned
+  - id: amass
+    repository: https://github.com/OWASP/Amass
+    kind: external-tool
+    adapter: cli
+    status: planned
+  - id: maigret
+    repository: https://github.com/soxoj/maigret
+    kind: external-tool
+    adapter: cli
+    status: planned
+  - id: phoneinfoga
+    repository: https://github.com/sundowndev/phoneinfoga
+    kind: external-tool
+    adapter: cli
+    status: planned
+  - id: subfinder
+    repository: https://github.com/projectdiscovery/subfinder
+    kind: external-tool
+    adapter: cli
+    status: planned
