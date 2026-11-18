@@ -783,6 +783,33 @@ main {
   margin-top: 6px;
   line-height: 1.45;
 }
+
+/* OSINT toolbox */
+.toolbox-section{margin:42px auto 0;max-width:1120px;border:1px solid var(--border);border-radius:16px;background:linear-gradient(145deg,rgba(37,99,235,.08),rgba(24,24,30,.96) 38%);padding:22px}
+.toolbox-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:18px}
+.toolbox-kicker{font:11px var(--mono);color:var(--cyan);letter-spacing:.12em;text-transform:uppercase}
+.toolbox-title{font-size:23px;font-weight:800;margin:4px 0}
+.toolbox-subtitle{font-size:12.5px;color:var(--text-muted);max-width:720px}
+.toolbox-counts{font:11px var(--mono);color:var(--green);border:1px solid rgba(16,185,129,.25);background:rgba(16,185,129,.08);padding:7px 10px;border-radius:8px}
+.toolbox-controls{display:flex;gap:10px;flex-wrap:wrap;margin:18px 0}
+.toolbox-controls input,.toolbox-controls select{background:var(--bg-input);border:1px solid var(--border);color:var(--text);border-radius:9px;padding:10px 12px;font:12px var(--mono);min-width:180px;flex:1}
+.toolbox-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(255px,1fr));gap:12px}
+.toolbox-card{background:rgba(15,15,20,.82);border:1px solid var(--border);border-radius:12px;padding:15px;display:flex;flex-direction:column;min-height:190px}
+.toolbox-card:hover{border-color:#3b82f6;transform:translateY(-1px)}
+.toolbox-card-top{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:10px}
+.toolbox-category{font:10px var(--mono);color:var(--cyan);text-transform:uppercase;letter-spacing:.07em}
+.toolbox-status{font:10px var(--mono);border-radius:20px;padding:3px 7px;background:rgba(16,185,129,.1);color:#6ee7b7;border:1px solid rgba(16,185,129,.24);white-space:nowrap}
+.toolbox-status.reference{background:rgba(245,158,11,.08);color:#fbbf24;border-color:rgba(245,158,11,.25)}
+.toolbox-card h4{font-size:15px;margin-bottom:6px}
+.toolbox-card p{font-size:12px;color:var(--text-muted);line-height:1.5;flex:1}
+.toolbox-tags{display:flex;flex-wrap:wrap;gap:5px;margin:11px 0}
+.toolbox-tag{font:10px var(--mono);color:#cbd5e1;background:rgba(255,255,255,.05);border:1px solid var(--border);padding:3px 6px;border-radius:5px}
+.toolbox-card-foot{display:flex;justify-content:space-between;align-items:center;gap:8px;border-top:1px solid var(--border);padding-top:10px;margin-top:4px}
+.toolbox-card-foot small{font-size:10px;color:var(--text-muted)}
+.toolbox-card-foot a,.toolbox-card-foot button{font-size:11px;padding:6px 9px;text-decoration:none}
+.toolbox-notice{font-size:11px;color:var(--text-muted);line-height:1.55;margin-top:16px;padding:11px 13px;background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:9px}
+.toolbox-empty{color:var(--text-muted);font-size:13px;padding:28px;text-align:center;grid-column:1/-1}
+@media(max-width:600px){.toolbox-section{padding:15px}.toolbox-title{font-size:19px}.toolbox-controls input,.toolbox-controls select{min-width:100%}}
 </style>
 </head>
 <body>
@@ -814,6 +841,7 @@ main {
       <button class="nav-tab-btn" data-type="ip" onclick="setSearchType('ip')">📡 IP</button>
       <button class="nav-tab-btn" data-type="crypto" onclick="setSearchType('crypto')">🪙 Crypto</button>
       <button class="nav-tab-btn" data-type="metadata" onclick="setSearchType('metadata')">🔍 Forensics</button>
+      <button class="nav-tab-btn" type="button" onclick="openToolbox()">⌘ OSINT Toolbox</button>
     </div>
   </div>
 
@@ -971,6 +999,21 @@ main {
     </div>
     <div id="historyList"></div>
   </div>
+
+  <section id="osintToolbox" class="toolbox-section">
+    <div class="toolbox-head">
+      <div><div class="toolbox-kicker">HackingTool-inspired discovery console</div><h2 class="toolbox-title">OSINT Toolbox</h2><p class="toolbox-subtitle">Search a curated OSINT-focused selection from HackingTool. Native ShadowTrace modules run here; external projects are clearly marked as reference links and are not executed by this Cloudflare Worker.</p></div>
+      <div class="toolbox-counts" id="toolboxCounts">Loading catalog…</div>
+    </div>
+    <div class="toolbox-controls">
+      <input id="toolboxSearch" type="search" placeholder="Search tools, categories or tags…" oninput="renderToolbox()">
+      <select id="toolboxCategory" onchange="renderToolbox()"><option value="">All categories</option></select>
+      <select id="toolboxStatus" onchange="renderToolbox()"><option value="">All availability</option><option value="integrated">Operational in ShadowTrace</option><option value="reference">External reference only</option></select>
+    </div>
+    <div id="toolboxGrid" class="toolbox-grid"><div class="toolbox-empty">Loading OSINT tool catalog…</div></div>
+    <div class="toolbox-notice" id="toolboxNotice">Catalog source: <a href="https://github.com/Z4nzu/hackingtool" target="_blank" rel="noopener noreferrer">Z4nzu/HackingTool</a> (MIT). HackingTool and third-party projects retain their own licenses and terms. This page adapts a limited OSINT subset; it does not bundle or execute third-party code. Use tools only on systems and data you are authorized to assess.</div>
+  </section>
+
 </main>
 
 <!-- Auth Modal -->
@@ -2001,12 +2044,59 @@ function escapeHtml(s) {
   return String(s || "").replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
 }
 
+
+let toolboxCatalog = [];
+async function loadToolbox() {
+  try {
+    const response = await fetch("/osint-tools.json", { headers: { "Accept": "application/json" } });
+    if (!response.ok) throw new Error("Catalog request failed (" + response.status + ")");
+    const data = await response.json();
+    if (!Array.isArray(data.tools)) throw new Error("Catalog format is invalid");
+    toolboxCatalog = data.tools;
+    const categories = [...new Set(toolboxCatalog.map(tool => tool.category))].sort();
+    el("toolboxCategory").innerHTML = '<option value="">All categories</option>' + categories.map(category => '<option value="' + escapeHtml(category) + '">' + escapeHtml(category) + '</option>').join("");
+    const active = toolboxCatalog.filter(tool => tool.status === "integrated").length;
+    el("toolboxCounts").textContent = active + " NATIVE MODULES · " + (toolboxCatalog.length - active) + " REFERENCES";
+    renderToolbox();
+  } catch (error) {
+    el("toolboxCounts").textContent = "CATALOG UNAVAILABLE";
+    el("toolboxGrid").innerHTML = '<div class="toolbox-empty">' + escapeHtml(error.message) + '</div>';
+  }
+}
+function renderToolbox() {
+  const grid = el("toolboxGrid");
+  if (!grid) return;
+  const query = (el("toolboxSearch")?.value || "").trim().toLowerCase();
+  const category = el("toolboxCategory")?.value || "";
+  const status = el("toolboxStatus")?.value || "";
+  const items = toolboxCatalog.filter(tool => {
+    const haystack = [tool.name, tool.category, tool.description, ...(tool.tags || [])].join(" ").toLowerCase();
+    return (!query || haystack.includes(query)) && (!category || tool.category === category) && (!status || tool.status === status);
+  });
+  if (!items.length) { grid.innerHTML = '<div class="toolbox-empty">No tools match these filters.</div>'; return; }
+  grid.innerHTML = items.map(tool => {
+    const integrated = tool.status === "integrated";
+    const action = integrated
+      ? '<button class="primary" type="button" onclick="openNativeTool(\'' + escapeHtml(tool.searchType) + '\')">Open module ↗</button>'
+      : '<a class="outline" href="' + escapeHtml(tool.url) + '" target="_blank" rel="noopener noreferrer">Upstream project ↗</a>';
+    return '<article class="toolbox-card"><div class="toolbox-card-top"><span class="toolbox-category">' + escapeHtml(tool.category) + '</span><span class="toolbox-status ' + (integrated ? '' : 'reference') + '">' + (integrated ? 'NATIVE · LIVE MODULE' : 'REFERENCE ONLY') + '</span></div><h4>' + escapeHtml(tool.name) + '</h4><p>' + escapeHtml(tool.description) + '</p><div class="toolbox-tags">' + (tool.tags || []).map(tag => '<span class="toolbox-tag">' + escapeHtml(tag) + '</span>').join('') + '</div><div class="toolbox-card-foot"><small>' + escapeHtml(tool.source) + '</small>' + action + '</div></article>';
+  }).join("");
+}
+function openToolbox() { el("osintToolbox")?.scrollIntoView({ behavior: "smooth", block: "start" }); }
+function openNativeTool(type) {
+  if (!type) return;
+  setSearchType(type);
+  el("searchInput")?.focus();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
 // Initial Boot Check
 fetch("/healthz").then(r => r.json()).then(d => {
   if (d.providers) el("sourcesCount").textContent = d.providers + " MODULES ACTIVE";
 }).catch(() => {});
 
 updateAuthUI();
+loadToolbox();
 
 // Auto-run initial query on load
 executeSearch();
