@@ -149,7 +149,7 @@ collectorManager.register({
       evidence: d.platforms.map(p => ({
         provider: p.name,
         category: p.category,
-        profile_url: p.url,
+        profile_url: p.url || null,
         domain: p.icon,
         status: p.status,
         verified: p.verified === true,
@@ -184,7 +184,7 @@ collectorManager.register({
       evidence: d.platforms.map(p => ({
         provider: p.name,
         category: p.category,
-        profile_url: p.url,
+        profile_url: p.url || null,
         domain: p.icon,
         status: p.status,
         verified: p.verified === true,
@@ -219,7 +219,7 @@ collectorManager.register({
       evidence: d.platforms.map(p => ({
         provider: p.name,
         category: p.category,
-        profile_url: p.url,
+        profile_url: p.url || null,
         domain: p.icon,
         status: p.status,
         verified: p.verified === true,
@@ -305,7 +305,7 @@ collectorManager.register({
       evidence: d.platforms.map(p => ({
         provider: p.name,
         category: p.category,
-        profile_url: p.url,
+        profile_url: p.url || null,
         domain: p.icon,
         status: p.status,
         verified: p.verified === true,
@@ -339,7 +339,7 @@ collectorManager.register({
       evidence: d.platforms.map(p => ({
         provider: p.name,
         category: p.category,
-        profile_url: p.url,
+        profile_url: p.url || null,
         domain: p.icon,
         status: p.status,
         verified: p.verified === true,
