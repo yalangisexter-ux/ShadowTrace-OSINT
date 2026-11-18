@@ -109,7 +109,7 @@ export function buildKnowledgeGraph(
         type: "username",
         category: "Discovered Identity",
         avatar: entities.profile_pictures?.[idx] || entities.profile_pictures?.[0],
-        details: `Correlated human display name or legal alias "${name}".`,
+        details: `Name string returned by a source. Its association with the target is not independently verified.`,
         risk: "low",
       });
       addEdge(targetId, nameId, "identifies_as", "Identifies As");
@@ -142,11 +142,11 @@ export function buildKnowledgeGraph(
         id: eId,
         label: email,
         type: "email",
-        category: "Linked Email",
-        details: `Associated recovery or secondary email address.`,
+        category: "Email Indicator",
+        details: "Email string returned by a source; mailbox control and relationship to the target are not established.",
         risk: "medium",
       });
-      addEdge(targetId, eId, "recovery_email", "Recovery Email");
+      addEdge(targetId, eId, "email_indicator", "Email Indicator", "medium");
     });
   }
 
@@ -159,16 +159,17 @@ export function buildKnowledgeGraph(
         id: pId,
         label: phone,
         type: "phone",
-        category: "Linked Phone",
-        details: `Linked 2FA / SMS recovery mobile number.`,
-        risk: "high",
+        category: "Phone Indicator",
+        details: "Phone-like value returned by a source; subscriber identity and relationship to the target are not established.",
+        risk: "medium",
       });
-      addEdge(targetId, pId, "recovery_phone", "Recovery Phone");
+      addEdge(targetId, pId, "phone_indicator", "Phone Indicator", "medium");
     });
   }
 
-  // 6. Confirmed Candidate Platforms & Services
+  // 6. Candidate profiles and technical observations remain distinct graph facts.
   const candidates = evidence.filter(e => e.status === "candidate");
+  const observations = evidence.filter(e => e.status === "observed");
   candidates.forEach((cand, idx) => {
     const platId = `platform:${cand.provider.toLowerCase().replace(/[^a-z0-9]/g, "_")}_${idx}`;
     const avatar = cand.extra_fields?.Avatar;
@@ -180,24 +181,30 @@ export function buildKnowledgeGraph(
       category: cand.category || "Social & Services",
       icon: cand.domain || `${cand.provider.toLowerCase()}.com`,
       avatar,
-      details: cand.detail || cand.identifier_display || `Registered profile on ${cand.provider}.`,
+      details: cand.detail || cand.identifier_display || `Candidate profile lead from ${cand.provider}; ownership is not established.`,
       risk: cand.confidence === "high" ? "low" : "medium",
     });
 
-    const rel = cand.category?.toLowerCase().includes("financial")
-      ? "payment_vpa"
-      : (cand.category?.toLowerCase().includes("telecom") ? "carrier_series" : "registered_account");
-
-    const label = cand.category?.toLowerCase().includes("financial")
-      ? "Payment VPA"
-      : (cand.category?.toLowerCase().includes("telecom") ? "Carrier Series" : "Active Profile");
-
-    addEdge(targetId, platId, rel, label, cand.confidence === "high" ? "high" : "medium");
+    addEdge(targetId, platId, "candidate_profile", "Candidate Profile", cand.confidence === "high" ? "high" : "medium");
 
     // Cross-link platform to discovered name if identity_name is present
     if (cand.identity_name && nodesMap.has(`name:${cand.identity_name}`)) {
       addEdge(platId, `name:${cand.identity_name}`, "displays_name", "Displays Name");
     }
+  });
+
+  observations.forEach((item, idx) => {
+    const observationId = `observation:${item.provider.toLowerCase().replace(/[^a-z0-9]/g, "_")}_${idx}`;
+    addNode({
+      id: observationId,
+      label: item.provider,
+      type: "platform",
+      category: item.category || "Technical observation",
+      icon: item.domain || undefined,
+      details: item.detail || item.identifier_display || "Source returned a technical observation.",
+      risk: "low",
+    });
+    addEdge(targetId, observationId, "source_observation", "Observed", item.confidence === "high" ? "high" : "medium");
   });
 
   const nodes = Array.from(nodesMap.values());
