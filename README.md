@@ -72,12 +72,12 @@ Before exposing the service publicly, configure a unique `SECRET_KEY` using `npx
 - `GET /healthz`
 - `GET /api/v1/plugins`
 - `POST /api/v1/search/username`
-- `POST /api/v1/collect/domain` (if enabled in the current Worker routes)
+- `POST /api/v1/search` (collector selected from target type)
 - `GET /api/v1/search/runs`
 - `GET /api/v1/search/runs/:run_id`
 - Report endpoints for Markdown, CSV, and HTML
 
-See the live OpenAPI/route documentation exposed by the deployed Worker.
+See `src/index.ts` for the authoritative route definitions.
 
 ## Responsible use
 
