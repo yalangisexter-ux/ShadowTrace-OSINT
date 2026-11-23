@@ -153,7 +153,7 @@ async function queryMxRecords(domain: string): Promise<{ records: string[]; stat
   } catch { return { records: [], status: null, ok: false }; }
 }
 
-export async function analyzeEmail(email: string): Promise<EmailResult> {
+export async function analyzeEmail(email: string, options?: { offline?: boolean }): Promise<EmailResult> {
   const cleaned = email.trim().toLowerCase();
   const parts = cleaned.split("@");
   if (parts.length !== 2 || !/^[^\s@]+$/.test(parts[0]) || !/^[a-z0-9.-]+\.[a-z]{2,63}$/i.test(parts[1])) {
@@ -166,6 +166,87 @@ export async function analyzeEmail(email: string): Promise<EmailResult> {
 
   const hashBuffer = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(cleaned));
   const sha256Hex = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
+
+  if (options?.offline) {
+    const roleAccounts = new Set(["admin", "support", "info", "security", "contact", "sales", "billing", "help", "root", "postmaster", "abuse", "compliance", "legal"]);
+    const rootLocal = username.split("+")[0];
+    const isRole = roleAccounts.has(rootLocal);
+    const hasTag = username.includes("+");
+    const tag = hasTag ? username.split("+")[1] : undefined;
+
+    const platforms: EmailResult["platforms"] = [
+      {
+        name: "EMAIL SYNTAX & PROVIDER IDENTIFICATION (OFFLINE MODE)",
+        category: "Domain infrastructure",
+        url: "",
+        status: "observed",
+        verified: true,
+        confidence: "high",
+        identifierDisplay: `${cleaned} · ${provider}`,
+        fieldsCount: 5,
+        extraFields: {
+          "Identified Provider": provider,
+          "Domain": domain,
+          "Local Mailbox Part": username,
+          ...(tag ? { "Sub-address Alias Tag": tag } : {}),
+          "Disposable Provider": isDisposable ? "Flagged Disposable" : "Standard Domain",
+          "Account Nature": isRole ? "Role / Operational Address" : "Individual / Personal Account",
+        },
+        detail: `Email syntax and domain verified locally without network lookups. Target domain classified as ${provider}.`,
+        icon: "offline-mail-classifier",
+      },
+      {
+        name: "CRYPTOGRAPHIC HASH DERIVATION (OFFLINE MODE)",
+        category: "Identity verification",
+        url: "",
+        status: "observed",
+        verified: true,
+        confidence: "high",
+        identifierDisplay: `SHA-256: ${sha256Hex.slice(0, 16)}...`,
+        fieldsCount: 2,
+        extraFields: {
+          "SHA-256 Hash": sha256Hex,
+          "Utility": "Lookup key for Gravatar, HaveIBeenPwned, and forensic databases",
+        },
+        detail: "Locally derived cryptographic digest for forensic cross-referencing.",
+        icon: "hash-generator",
+      },
+      {
+        name: "OFFLINE ANALYSIS NOTICE",
+        category: "Identity verification",
+        url: "",
+        status: "observed",
+        verified: true,
+        confidence: "high",
+        identifierDisplay: "Offline Mode Active",
+        fieldsCount: 2,
+        extraFields: {
+          "Mode": "Air-Gapped / Offline",
+          "Skipped Lookups": "OpenPGP keyserver, live Gravatar, and GitHub commit author history",
+        },
+        detail: "Running in Offline Mode. Live OpenPGP keyserver queries, Gravatar profiles, and GitHub commit index lookups were skipped.",
+        icon: "offline-notice",
+      },
+    ];
+
+    return {
+      email: cleaned,
+      username,
+      domain,
+      provider,
+      isFreeProvider,
+      isDisposable,
+      entities: {
+        names: [],
+        profile_pictures: [],
+        banners: [],
+        usernames: [username],
+        emails: [cleaned],
+        phones: [],
+      },
+      platforms,
+    };
+  }
 
   const [pgp, grav, github, mx] = await Promise.all([
     queryPgpKeyserver(cleaned),

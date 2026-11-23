@@ -9,6 +9,7 @@ import {
   isSoft404Page,
   isAllowedFinalUrl,
   profilePathMatchesUsername,
+  searchUsername,
 } from "../src/providers.ts";
 import {
   hashPassword,
@@ -154,7 +155,7 @@ import { analyzePhoneNumber } from "../src/phone.ts";
 import { analyzeIP } from "../src/ip.ts";
 import { analyzeDomain } from "../src/domain.ts";
 import { analyzeMetadata } from "../src/metadata.ts";
-import { detectCryptoAddress } from "../src/crypto.ts";
+import { detectCryptoAddress, analyzeCrypto } from "../src/crypto.ts";
 import { collectorManager } from "../src/collector.ts";
 import { buildKnowledgeGraph } from "../src/graph.ts";
 import { generateAISummary } from "../src/ai.ts";
@@ -440,5 +441,53 @@ test("OSINT toolbox catalog has honest native-versus-reference availability", as
     assert.ok(["integrated", "reference"].includes(tool.status));
     if (tool.status === "integrated") assert.ok(["username", "email", "phone", "domain", "ip", "crypto", "metadata"].includes(tool.searchType));
     if (tool.status === "reference") assert.equal(tool.searchType, undefined);
+  }
+});
+
+test("offline intelligence modules perform local analysis with zero network requests", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = () => {
+    throw new Error("Network request attempted in offline mode!");
+  };
+
+  try {
+    // 1. Offline domain analysis
+    const domainRes = await analyzeDomain("shadowtrace.org", { offline: true });
+    assert.equal(domainRes.domain, "shadowtrace.org");
+    assert.ok(domainRes.evidence.length >= 2);
+    assert.ok(domainRes.evidence.some(e => e.provider.includes("Offline")));
+
+    // 2. Offline IP analysis
+    const ipRes = await analyzeIP("192.168.1.1", { offline: true });
+    assert.equal(ipRes.type, "IPv4");
+    assert.equal(ipRes.isBogon, true);
+    assert.ok(ipRes.platforms.some(p => p.name.includes("PRIVATE / RESERVED")));
+
+    const publicIpRes = await analyzeIP("8.8.8.8", { offline: true });
+    assert.equal(publicIpRes.type, "IPv4");
+    assert.ok(publicIpRes.platforms.some(p => p.name.includes("OFFLINE ANALYSIS NOTICE")));
+
+    // 3. Offline email analysis
+    const emailRes = await analyzeEmail("analyst+investigation@gmail.com", { offline: true });
+    assert.equal(emailRes.username, "analyst+investigation");
+    assert.equal(emailRes.domain, "gmail.com");
+    assert.ok(emailRes.platforms.some(p => p.name.includes("OFFLINE ANALYSIS NOTICE")));
+    assert.ok(emailRes.platforms.some(p => p.extraFields?.["Sub-address Alias Tag"] === "investigation"));
+
+    // 4. Offline crypto analysis
+    const cryptoRes = await analyzeCrypto("1BoatSLRHtKNngkdXEeobR76b53LETtpyT", { offline: true });
+    assert.equal(cryptoRes.blockchain, "Bitcoin");
+    assert.equal(cryptoRes.isValid, true);
+    assert.ok(cryptoRes.platforms.some(p => p.name.includes("OFFLINE MODE")));
+
+    // 5. Offline username analysis
+    const userRes = await searchUsername("johndoe", 0, { offline: true });
+    assert.ok(userRes.length >= 15);
+    for (const r of userRes) {
+      assert.equal(r.status, "inconclusive");
+      assert.ok(r.detail.includes("Offline Mode"));
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
   }
 });

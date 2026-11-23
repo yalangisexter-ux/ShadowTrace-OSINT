@@ -45,6 +45,7 @@ export interface Env {
   APP_ENV?: string;
   ACCESS_TOKEN_MINUTES?: string;
   ASSETS?: Fetcher;
+  OFFLINE_MODE?: string;
 }
 
 export const app = new Hono<{ Bindings: Env }>();
@@ -172,9 +173,25 @@ async function requireAuth(c: any): Promise<UserRow> {
 }
 
 // Threat Matrix calculation
-function calculateThreatMatrix(results: any[], queryType: string) {
+function calculateThreatMatrix(results: any[], queryType: string, isOffline = false) {
   const candidates = results.filter((r) => r.status === "candidate");
   const observed = results.filter((r) => r.status === "observed");
+
+  if (isOffline) {
+    return {
+      score: 0,
+      overall_threat_score: 0,
+      level: "OFFLINE",
+      risk_level: "unassessed",
+      exposure_summary: "Offline Mode Active: Local syntactic, structural, and forensic analysis completed without external network telemetry.",
+      credential_reuse_risk: "Not assessed in offline mode.",
+      phishing_surface: "Not assessed in offline mode.",
+      observed_count: observed.length,
+      candidate_count: candidates.length,
+      query_type: queryType,
+    };
+  }
+
   const vulnerabilityFindings = observed.filter((r) => {
     const cves = r.extra_fields?.["CVE identifiers"] || r.extra_fields?.["Known Vulnerabilities (CVEs)"];
     return /shodan/i.test(r.provider || "") && Boolean(cves) && !["None returned", "None detected"].includes(String(cves));
@@ -241,10 +258,22 @@ app.get("/healthz", async (c) => {
         secret_key_set: secretOk,
         database_configured: dbOk,
         app_env: c.env.APP_ENV || "unknown",
+        offline_mode: c.env.OFFLINE_MODE === "true",
       },
     },
     isHealthy ? 200 : 503
   );
+});
+
+// System environment & offline mode status endpoint
+app.get("/api/v1/system/mode", async (c) => {
+  const isOffline = c.env.OFFLINE_MODE === "true";
+  return c.json({
+    offline: isOffline,
+    mode: isOffline ? "offline" : "online",
+    app_env: c.env.APP_ENV || "development",
+    offline_ready: true,
+  });
 });
 
 // Plugin / Collector Registry inspection endpoint
@@ -419,14 +448,15 @@ async function handleSearch(c: any) {
 
   // Dispatch to the unified Collector Manager
   const depth = parseInt(body.depth || "0", 10) || 0;
-  const collectionResult = await collectorManager.dispatch(rawQuery, searchType, { depth });
+  const isOffline = body.offline === true || c.env.OFFLINE_MODE === "true" || c.req.header("x-offline-mode") === "true";
+  const collectionResult = await collectorManager.dispatch(rawQuery, searchType, { depth, offline: isOffline });
 
   const queryLabel = collectionResult.label || rawQuery;
   const entities = collectionResult.entities;
   const results = collectionResult.evidence;
   const candidates = results.filter((r) => r.status === "candidate").length;
 
-  const threatMatrix = calculateThreatMatrix(results, searchType);
+  const threatMatrix = calculateThreatMatrix(results, searchType, isOffline);
   const graph = buildKnowledgeGraph(queryLabel, searchType, entities, results);
   const aiSummary = generateAISummary(queryLabel, searchType, entities, results, threatMatrix);
 
@@ -468,6 +498,7 @@ async function handleSearch(c: any) {
         providers: results.length,
       },
       threat_matrix: threatMatrix,
+      offline: isOffline,
       evidence: results,
       graph,
       ai: aiSummary,

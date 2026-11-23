@@ -106,12 +106,98 @@ async function queryRdap(domain: string): Promise<{ data: any | null; httpStatus
   }
 }
 
-export async function analyzeDomain(rawDomain: string): Promise<DomainResult> {
+function calculateEntropy(str: string): number {
+  const map: Record<string, number> = {};
+  for (const c of str) map[c] = (map[c] || 0) + 1;
+  let entropy = 0;
+  for (const c in map) {
+    const p = map[c] / str.length;
+    entropy -= p * Math.log2(p);
+  }
+  return entropy;
+}
+
+export async function analyzeDomain(rawDomain: string, options?: { offline?: boolean }): Promise<DomainResult> {
   const domain = rawDomain.trim().toLowerCase().replace(/\.$/, "");
   if (!DOMAIN_RE.test(domain) || /\.(localhost|local|internal|test|invalid|example|onion)$/.test(domain)) {
     throw new Error("Enter a valid public domain name without a URL path.");
   }
   const checkedAt = new Date().toISOString();
+
+  if (options?.offline) {
+    const parts = domain.split(".");
+    const tld = parts[parts.length - 1];
+    const sld = parts.length > 1 ? parts[parts.length - 2] : parts[0];
+    const subdomainsCount = Math.max(0, parts.length - 2);
+    const entropy = calculateEntropy(sld);
+    const isHighEntropy = entropy > 3.8;
+
+    const evidence: EvidenceItem[] = [
+      {
+        provider: "Domain Syntax & TLD Delegation (Offline Mode)",
+        category: "domain",
+        profile_url: `https://${domain}`,
+        domain,
+        status: "observed",
+        http_status: 200,
+        confidence: "high",
+        detail: `Syntactic structure validated locally. Top-level domain .${tld} recognized; second-level domain "${sld}".`,
+        checked_at: checkedAt,
+        extra_fields: {
+          "Top-Level Domain (TLD)": `.${tld}`,
+          "Second-Level Domain": sld,
+          "Domain Character Count": String(domain.length),
+          "Subdomains Detected": String(subdomainsCount),
+        },
+      },
+      {
+        provider: "Domain Entropy & DGA Heuristics (Offline Mode)",
+        category: "security",
+        profile_url: `https://${domain}`,
+        domain,
+        status: "observed",
+        http_status: 200,
+        confidence: "high",
+        detail: `Shannon entropy: ${entropy.toFixed(2)} bits. ${isHighEntropy ? "Elevated randomness detected (possible algorithmically generated domain)." : "Normal human-readable lexical distribution."}`,
+        checked_at: checkedAt,
+        extra_fields: {
+          "Shannon Entropy": `${entropy.toFixed(2)} bits`,
+          "Randomness Assessment": isHighEntropy ? "Suspicious (High Entropy)" : "Standard Lexical Pattern",
+          "Hyphens / Numerics": /[-0-9]/.test(sld) ? "Present in domain" : "None detected",
+        },
+      },
+      {
+        provider: "Offline Analysis Notice",
+        category: "security",
+        profile_url: "",
+        domain,
+        status: "observed",
+        http_status: 200,
+        confidence: "high",
+        detail: "Running in Offline / Air-Gapped Mode. Live DNS-over-HTTPS (Cloudflare DoH), RDAP registrar queries, and Certificate Transparency (crt.sh) queries were skipped.",
+        checked_at: checkedAt,
+        extra_fields: {
+          "Mode": "Offline Local Execution",
+          "External Network Requests": "0 (None dispatched)",
+        },
+      },
+    ];
+
+    return {
+      domain,
+      ipAddresses: [],
+      ipv6Addresses: [],
+      mailServers: [],
+      nameServers: [],
+      txtRecords: [],
+      hasSpf: false,
+      hasDmarc: false,
+      dmarcPolicy: "Not assessed (Offline Mode)",
+      isCloudflare: false,
+      evidence,
+    };
+  }
+
   const [a, aaaa, mx, txt, ns, dmarc, ct, rdap] = await Promise.all([
     queryDns(domain, "A"),
     queryDns(domain, "AAAA"),

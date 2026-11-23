@@ -7,7 +7,8 @@
 <title>ShadowTrace // OSINT Footprint Discovery & Intelligence Engine</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+<noscript><link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"></noscript>
 <style>
 :root {
   --bg: #111114;
@@ -24,8 +25,24 @@
   --red: #f43f5e;
   --text: #f3f4f6;
   --text-muted: #9ca3af;
-  --font: 'Inter', system-ui, -apple-system, sans-serif;
-  --mono: 'JetBrains Mono', monospace;
+  --font: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+}
+.fallback-avatar {
+  width: 100%;
+  height: 100%;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #1e3a8a, #0284c7);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  user-select: none;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
@@ -822,6 +839,10 @@ main {
     <div>ShadowTrace</div>
   </div>
   <div class="header-actions">
+    <button id="offlineToggleBtn" class="outline" type="button" onclick="toggleOfflineMode()" title="Toggle Offline / Air-Gapped Mode" style="font-size:11px;padding:5px 12px;border-radius:20px;display:inline-flex;align-items:center;gap:6px;">
+      <span id="offlineIcon">⚡</span>
+      <span id="offlineLabel">LIVE MODE</span>
+    </button>
     <div class="badge-live">
       <div class="pulse"></div>
       <span id="sourcesCount">34+ MODULES ACTIVE</span>
@@ -831,6 +852,14 @@ main {
 </header>
 
 <main>
+  <!-- Offline Alert Banner -->
+  <div id="offlineNoticeBanner" class="hidden" style="max-width:820px;margin:0 auto 16px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.28);border-radius:10px;padding:10px 16px;display:flex;align-items:center;justify-content:space-between;font-size:12px;color:#fbbf24;">
+    <div style="display:flex;align-items:center;gap:10px;">
+      <span style="font-size:16px;">📴</span>
+      <span><strong>Offline / Air-Gapped Mode:</strong> External internet requests are disabled. Phone E.164 parsing, image EXIF forensics, crypto checksums, domain/IP structure, and local SQLite history are running 100% locally.</span>
+    </div>
+    <button class="outline" type="button" onclick="toggleOfflineMode()" style="font-size:11px;padding:3px 10px;margin-left:10px;border-color:rgba(245,158,11,0.4);color:#fbbf24;white-space:nowrap;">Go Live ⚡</button>
+  </div>
   <!-- Search Type Pill Tabs (Centered like fingerprint.to) -->
   <div class="nav-tabs-wrapper">
     <div class="search-type-tabs">
@@ -1249,9 +1278,10 @@ async function executeSearch() {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        ...(token ? { "Authorization": "Bearer " + token } : {})
+        ...(token ? { "Authorization": "Bearer " + token } : {}),
+        ...(isOfflineMode ? { "x-offline-mode": "true" } : {})
       },
-      body: JSON.stringify({ query: val, type: currentSearchType, username: val })
+      body: JSON.stringify({ query: val, type: currentSearchType, username: val, offline: isOfflineMode })
     });
     const d = await res.json();
     if (!res.ok) throw new Error(d.detail || "Search request failed");
@@ -1433,13 +1463,18 @@ function renderPlatformCards() {
     const fieldsCount = item.fields_count || 1;
     const hasExtra = item.extra_fields && Object.keys(item.extra_fields).length > 0;
     const faviconUrl = `https://www.google.com/s2/favicons?domain=${encodeURIComponent(item.domain || item.provider.toLowerCase() + '.com')}&sz=64`;
+    const monogram = escapeHtml((item.provider || '?').slice(0, 2).toUpperCase());
+    const avatarUrl = item.extra_fields && item.extra_fields.Avatar ? item.extra_fields.Avatar : "";
+    const logoHtml = (isOfflineMode || (!avatarUrl && !item.domain))
+      ? `<span class="fallback-avatar">${monogram}</span>`
+      : `<img src="${escapeHtml(avatarUrl || faviconUrl)}" alt="${escapeHtml(item.provider)}" onerror="this.outerHTML='<span class=\\'fallback-avatar\\'>${monogram}</span>'">`;
 
     return `
       <div class="platform-card" id="card_${idx}">
         <div>
           <div class="platform-card-header">
             <div class="platform-logo">
-              <img src="${item.extra_fields && item.extra_fields.Avatar ? escapeHtml(item.extra_fields.Avatar) : faviconUrl}" alt="${escapeHtml(item.provider)}" onerror="this.src='${faviconUrl}'">
+              ${logoHtml}
             </div>
             <div class="platform-titles">
               <div class="platform-name">${escapeHtml(item.provider)} <span style="margin-left:6px;font-size:10px;letter-spacing:.04em;color:${item.status === "observed" ? "var(--cyan)" : "var(--amber)"}">${item.status === "observed" ? "OBSERVED" : "CANDIDATE"}</span></div>
@@ -2090,11 +2125,72 @@ function openNativeTool(type) {
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
+// Offline Mode Management
+let isOfflineMode = !navigator.onLine;
+
+function updateOfflineUI() {
+  const btn = el("offlineToggleBtn");
+  const icon = el("offlineIcon");
+  const label = el("offlineLabel");
+  const banner = el("offlineNoticeBanner");
+  if (!btn) return;
+  if (isOfflineMode) {
+    btn.style.borderColor = "rgba(245,158,11,0.5)";
+    btn.style.background = "rgba(245,158,11,0.12)";
+    btn.style.color = "#fbbf24";
+    if (icon) icon.textContent = "📴";
+    if (label) label.textContent = "OFFLINE MODE";
+    banner?.classList.remove("hidden");
+  } else {
+    btn.style.borderColor = "var(--border)";
+    btn.style.background = "rgba(255,255,255,0.04)";
+    btn.style.color = "var(--text)";
+    if (icon) icon.textContent = "⚡";
+    if (label) label.textContent = "LIVE MODE";
+    banner?.classList.add("hidden");
+  }
+}
+
+function toggleOfflineMode() {
+  isOfflineMode = !isOfflineMode;
+  updateOfflineUI();
+  if (currentQuery) executeSearch();
+}
+
+window.addEventListener("online", () => {
+  if (isOfflineMode) {
+    isOfflineMode = false;
+    updateOfflineUI();
+  }
+});
+
+window.addEventListener("offline", () => {
+  if (!isOfflineMode) {
+    isOfflineMode = true;
+    updateOfflineUI();
+  }
+});
+
+// Register Offline Service Worker
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch(() => {});
+  });
+}
+
 // Initial Boot Check
+fetch("/api/v1/system/mode").then(r => r.json()).then(d => {
+  if (d.offline) {
+    isOfflineMode = true;
+    updateOfflineUI();
+  }
+}).catch(() => {});
+
 fetch("/healthz").then(r => r.json()).then(d => {
   if (d.providers) el("sourcesCount").textContent = d.providers + " MODULES ACTIVE";
 }).catch(() => {});
 
+updateOfflineUI();
 updateAuthUI();
 loadToolbox();
 

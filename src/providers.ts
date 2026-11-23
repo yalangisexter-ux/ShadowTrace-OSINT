@@ -1023,9 +1023,36 @@ export async function checkProvider(
 
 export async function searchUsername(
   username: string,
-  depth: number = 0
+  depth: number = 0,
+  options?: { offline?: boolean }
 ): Promise<CheckResult[]> {
   const valid = validateUsername(username);
+
+  if (options?.offline) {
+    const checkedAt = new Date().toISOString();
+    return PROVIDERS.map(p => {
+      const targetUrl = p.urlTemplate.replace("{username}", encodeURIComponent(valid));
+      return {
+        provider: p.name,
+        category: p.category,
+        profile_url: targetUrl,
+        domain: p.domain,
+        status: "inconclusive" as const,
+        http_status: null,
+        confidence: "none" as const,
+        detail: `Offline Mode: Profile URL prepared (${targetUrl}). Live network probing skipped.`,
+        checked_at: checkedAt,
+        layer: 0,
+        extra_fields: {
+          "Profile URL": targetUrl,
+          "Platform Category": p.category,
+          "Domain": p.domain,
+          "Execution Mode": "Offline Reconnaissance (No Network Calls)",
+        },
+      };
+    });
+  }
+
   const maxDepth = Math.min(Math.max(0, Number.isFinite(depth) ? Math.floor(depth) : 0), 1);
   const seen = new Set<string>([valid.toLowerCase()]);
   const allResults: CheckResult[] = [];

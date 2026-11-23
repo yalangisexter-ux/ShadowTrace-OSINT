@@ -5,9 +5,12 @@
   "description": "ShadowTrace OSINT - Migrated to Cloudflare Workers and D1",
   "main": "src/index.ts",
   "scripts": {
-    "dev": "wrangler dev",
+    "dev": "tsx --experimental-sqlite src/local-dev.ts",
+    "dev:offline": "tsx --experimental-sqlite src/local-dev.ts",
     "dev:local": "tsx --experimental-sqlite src/local-dev.ts",
+    "dev:wrangler": "wrangler dev",
     "start": "tsx --experimental-sqlite src/local-dev.ts",
+    "start:offline": "tsx --experimental-sqlite src/local-dev.ts",
     "deploy": "wrangler deploy",
     "d1:create": "wrangler d1 create shadowtrace-db",
     "d1:migrate:local": "wrangler d1 migrations apply shadowtrace-db --local",

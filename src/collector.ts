@@ -140,8 +140,8 @@ collectorManager.register({
   targetTypes: ["domain"],
   description: "Queries Google & Cloudflare DoH, RDAP/WHOIS registrar records, and crt.sh Certificate Transparency.",
   health: async () => ({ ok: true }),
-  execute: async (query) => {
-    const d = await analyzeDomain(query);
+  execute: async (query, options) => {
+    const d = await analyzeDomain(query, options);
     return {
       query: d.domain,
       type: "domain",
@@ -169,8 +169,8 @@ collectorManager.register({
   targetTypes: ["ip"],
   description: "Resolves GeoIP coordinates, ASN, ISP, Cloud provider footprint, and reverse DNS PTR records.",
   health: async () => ({ ok: true }),
-  execute: async (query) => {
-    const d = await analyzeIP(query);
+  execute: async (query, options) => {
+    const d = await analyzeIP(query, options);
     return {
       query: d.ip,
       type: "ip",
@@ -203,8 +203,8 @@ collectorManager.register({
   targetTypes: ["email"],
   description: "Public Gravatar, exact-match GitHub commit, OpenPGP, and domain MX observations.",
   health: async () => ({ ok: true }),
-  execute: async (query) => {
-    const d = await analyzeEmail(query);
+  execute: async (query, options) => {
+    const d = await analyzeEmail(query, options);
     return {
       query: d.email,
       type: "email",
@@ -252,7 +252,7 @@ collectorManager.register({
         identity_name: d.country !== "Unknown" ? d.country : undefined,
         identifier_display: `E.164: ${d.e164}`,
         fields_count: 4,
-        extra_fields: {
+        extraFields: {
           "E.164 Number": d.e164,
           "International Format": d.formatted,
           "Country / Dial Plan": d.country,
@@ -298,7 +298,7 @@ collectorManager.register({
   health: async () => ({ ok: true }),
   execute: async (query, options) => {
     const depth = options?.depth || 0;
-    const results = await searchUsername(query, depth);
+    const results = await searchUsername(query, depth, options);
 
     const discoveredNames = new Set<string>();
     const discoveredAvatars = new Set<string>();
@@ -346,8 +346,8 @@ collectorManager.register({
   targetTypes: ["crypto"],
   description: "Validates Bitcoin, Ethereum, Solana, and Tron addresses with live balance and explorer hooks.",
   health: async () => ({ ok: true }),
-  execute: async (query) => {
-    const d = await analyzeCrypto(query);
+  execute: async (query, options) => {
+    const d = await analyzeCrypto(query, options);
     return {
       query: d.address,
       type: "crypto",

@@ -76,9 +76,49 @@ export function detectCryptoAddress(address: string): {
   };
 }
 
-export async function analyzeCrypto(address: string): Promise<CryptoResult> {
+export async function analyzeCrypto(address: string, options?: { offline?: boolean }): Promise<CryptoResult> {
   const clean = address.trim();
   const detection = detectCryptoAddress(clean);
+
+  if (options?.offline) {
+    const platforms: CryptoResult["platforms"] = [{
+      name: `${detection.blockchain.toUpperCase()} ADDRESS PATTERN (OFFLINE MODE)`,
+      category: "Public blockchain data",
+      url: detection.explorerUrl,
+      status: "observed",
+      verified: true,
+      confidence: "high",
+      identifierDisplay: detection.isValid ? `${detection.blockchain} address syntax recognized` : "Unrecognized address format",
+      fieldsCount: 3,
+      extraFields: {
+        "Blockchain": detection.blockchain,
+        "Format Structure": detection.format,
+        "Verification Mode": "Offline Pattern Analysis (Zero Network Dispatches)",
+      },
+      detail: detection.isValid
+        ? `Valid ${detection.blockchain} address syntax confirmed locally. Live node queries skipped (Offline Mode).`
+        : "Address does not conform to standard known cryptocurrency address formats.",
+      icon: detection.blockchain.toLowerCase(),
+    }];
+
+    return {
+      address: clean,
+      blockchain: detection.blockchain,
+      format: detection.format,
+      isValid: detection.isValid,
+      explorerUrl: detection.explorerUrl,
+      entities: {
+        names: [],
+        profile_pictures: [],
+        banners: [],
+        usernames: [],
+        emails: [],
+        phones: [],
+      },
+      platforms,
+    };
+  }
+
   let balance: string | undefined;
   let balanceFormatted: string | undefined;
   let txCount: number | undefined;

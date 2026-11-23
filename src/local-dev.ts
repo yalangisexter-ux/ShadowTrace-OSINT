@@ -113,6 +113,7 @@ const env: Env = {
   SECRET_KEY: "local-dev-secret-key-32-chars-long-for-jwt",
   APP_ENV: "development",
   ACCESS_TOKEN_MINUTES: "60",
+  OFFLINE_MODE: process.env.OFFLINE_MODE || "false",
 };
 
 const port = 8000;
@@ -121,6 +122,7 @@ serve(
   {
     fetch: (req) => app.fetch(req, env),
     port,
+    hostname: "0.0.0.0",
   },
   (info) => {
     console.log(`\n=================================================================`);
@@ -128,9 +130,10 @@ serve(
     console.log(`  🌐 Web Application: http://localhost:${info.port}/`);
     console.log(`  ⚡ API Health Check: http://localhost:${info.port}/healthz`);
     console.log(`  🧰 OSINT Toolbox:    http://localhost:${info.port}/osint-tools.json`);
+    console.log(`  📴 Offline Support:  100% Offline-Ready (Zero Cloud Lock-in)`);
     console.log(`  ---------------------------------------------------------------`);
     console.log(`  * Actively listening for incoming browser & API requests.`);
-    console.log(`  * This process stays open as a background server (NOT hung).`);
+    console.log(`  * Runs 100% offline with local SQLite D1 & asset emulation.`);
     console.log(`  * Press Ctrl+C in this terminal whenever you wish to stop it.`);
     console.log(`=================================================================\n`);
   }

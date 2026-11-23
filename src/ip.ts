@@ -150,7 +150,7 @@ async function queryGeoIp(ip: string): Promise<{ data: any | null; status: numbe
   } catch { return { data: null, status: null, ok: false }; }
 }
 
-export async function analyzeIP(input: string): Promise<IPResult> {
+export async function analyzeIP(input: string, options?: { offline?: boolean }): Promise<IPResult> {
   const ip = input.trim();
   const isV4 = ip.includes(".");
   if (isBogonIP(ip) && !ip.includes(".") && !ip.includes(":")) throw new Error("Invalid IP address.");
@@ -173,6 +173,81 @@ export async function analyzeIP(input: string): Promise<IPResult> {
 
   const platforms: IPResult["platforms"] = [];
   let hostname: string | undefined;
+
+  if (options?.offline) {
+    const arpa = isV4
+      ? ip.split(".").reverse().join(".") + ".in-addr.arpa"
+      : expandIPv6(ip).replace(/:/g, "").split("").reverse().join(".") + ".ip6.arpa";
+
+    let intVal = "";
+    let hexVal = "";
+    if (isV4) {
+      const octets = ip.split(".").map(Number);
+      const num = (octets[0] << 24) | (octets[1] << 16) | (octets[2] << 8) | octets[3];
+      intVal = String(num >>> 0);
+      hexVal = "0x" + (num >>> 0).toString(16).padStart(8, "0").toUpperCase();
+    }
+
+    platforms.push({
+      name: isBogon ? "PRIVATE / RESERVED IP CLASSIFICATION" : "IP ADDRESS ARCHITECTURE & SUBNET",
+      category: "Address classification",
+      url: "",
+      status: "observed",
+      verified: true,
+      confidence: "high",
+      identifierDisplay: `${type}: ${ip}`,
+      fieldsCount: 5,
+      extraFields: {
+        "IP Protocol": type,
+        "Classification": isBogon ? "Private / Reserved (RFC 6890)" : "Routable Public IP",
+        "Reverse DNS Pointer (ARPA)": arpa,
+        ...(intVal ? { "Integer Notation": intVal } : {}),
+        ...(hexVal ? { "Hexadecimal Notation": hexVal } : {}),
+      },
+      detail: isBogon
+        ? "The address is in a private, shared, loopback, link-local, documentation, multicast, or otherwise non-public range (RFC 6890). Offline analysis completed."
+        : `Public ${type} address formatted and classified locally. Reverse DNS ARPA zone: ${arpa}.`,
+      icon: "local-ip-classifier",
+    });
+
+    platforms.push({
+      name: "OFFLINE ANALYSIS NOTICE",
+      category: "Network location",
+      url: "",
+      status: "observed",
+      verified: true,
+      confidence: "high",
+      identifierDisplay: "Offline Mode Active",
+      fieldsCount: 2,
+      extraFields: {
+        "Mode": "Air-Gapped / Offline",
+        "Skipped Services": "GeoIP (ipwho.is), Shodan InternetDB, and PTR Resolution",
+      },
+      detail: "Running in Offline Mode. Remote GeoIP coordinates, ASN registration, and live Shodan vulnerability snapshots were skipped.",
+      icon: "offline-notice",
+    });
+
+    return {
+      ip,
+      type,
+      isBogon,
+      hostname,
+      country,
+      countryCode,
+      region,
+      city,
+      timezone,
+      entities: {
+        names: [],
+        profile_pictures: [],
+        banners: [],
+        usernames: [],
+        emails: [],
+        phones: [],
+      },
+      platforms,
+    };
+  }
 
   if (isBogon) {
     platforms.push({
