@@ -1,5 +1,5 @@
 // ShadowTrace OSINT Service Worker for Offline / Air-Gapped Execution
-const CACHE_NAME = "shadowtrace-v2.1";
+const CACHE_NAME = "shadowtrace-v2.2";
 const STATIC_ASSETS = [
   "/",
   "/index.html",
@@ -33,20 +33,19 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
 
-  // For navigation and static files, use Cache-First / Stale-While-Revalidate
+  // For HTML navigation and osint-tools, use Network-First with Cache fallback
   if (event.request.method === "GET") {
-    if (url.pathname === "/" || url.pathname === "/index.html" || url.pathname === "/osint-tools.json") {
+    if (event.request.mode === "navigate" || url.pathname === "/" || url.pathname === "/index.html" || url.pathname === "/osint-tools.json") {
       event.respondWith(
-        caches.match(event.request).then((cached) => {
-          const fetchPromise = fetch(event.request).then((networkRes) => {
+        fetch(event.request)
+          .then((networkRes) => {
             if (networkRes && networkRes.status === 200) {
               const clone = networkRes.clone();
               caches.open(CACHE_NAME).then((c) => c.put(event.request, clone));
             }
             return networkRes;
-          }).catch(() => cached);
-          return cached || fetchPromise;
-        })
+          })
+          .catch(() => caches.match(event.request))
       );
       return;
     }

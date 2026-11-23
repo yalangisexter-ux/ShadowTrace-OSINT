@@ -563,6 +563,17 @@ test("SpiderFoot modular engine evaluates passive DNS, BGPView routing, and corr
   assert.equal(otx.threatScore, 0);
 });
 
+test("frontend index.html contains fully valid JavaScript without syntax errors", async () => {
+  const html = await readFile(new URL("../frontend/index.html", import.meta.url), "utf8");
+  const scriptStart = html.indexOf("<script>");
+  const scriptEnd = html.lastIndexOf("</script>");
+  assert.ok(scriptStart > 0 && scriptEnd > scriptStart);
+  const scriptContent = html.slice(scriptStart + 8, scriptEnd);
+  assert.doesNotThrow(() => {
+    new Function(scriptContent);
+  });
+});
+
 test("Collector framework seamlessly dispatches to Sherlock, SpiderFoot, PhoneInfoga, and theHarvester", async () => {
   // Phone with PhoneInfoga
   const phoneRes = await collectorManager.dispatch("+12025550123", "phone");
