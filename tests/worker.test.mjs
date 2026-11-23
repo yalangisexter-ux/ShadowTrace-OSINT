@@ -114,10 +114,10 @@ test("legacy PBKDF2 hashes remain valid and request an upgrade", async () => {
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), { name: "PBKDF2" }, false, ["deriveBits"]);
   const digest = new Uint8Array(await crypto.subtle.deriveBits(
-    { name: "PBKDF2", salt, iterations: 100000, hash: "SHA-256" }, key, 256
+    { name: "PBKDF2", salt, iterations: 50000, hash: "SHA-256" }, key, 256
   ));
   const hex = bytes => Array.from(bytes, b => b.toString(16).padStart(2, "0")).join("");
-  const legacy = "pbkdf2:sha256:100000$" + hex(salt) + "$" + hex(digest);
+  const legacy = "pbkdf2:sha256:50000$" + hex(salt) + "$" + hex(digest);
   assert.deepEqual(await verifyPassword(password, legacy), { ok: true, needsRehash: true });
   assert.deepEqual(await verifyPassword("incorrect password", legacy), { ok: false, needsRehash: false });
 });
