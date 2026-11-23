@@ -116,6 +116,14 @@ const env: Env = {
   OFFLINE_MODE: process.env.OFFLINE_MODE || "false",
 };
 
+process.on("uncaughtException", (err) => {
+  console.error("Local Dev Server Uncaught Exception:", err);
+});
+
+process.on("unhandledRejection", (reason) => {
+  console.error("Local Dev Server Unhandled Rejection:", reason);
+});
+
 const port = 8000;
 
 serve(

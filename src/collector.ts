@@ -16,6 +16,10 @@ import { runTheHarvesterScan } from "./harvester.ts";
 import { queryBgpView, queryAlienVaultOTX } from "./spiderfoot.ts";
 import { generatePhoneInfogaFootprint } from "./phoneinfoga.ts";
 import { runSherlockScan } from "./sherlock.ts";
+import { runMaigretScan } from "./maigret.ts";
+import { runAmassScan } from "./amass.ts";
+import { runSubfinderScan } from "./subfinder.ts";
+import { runReconNgScan } from "./recon_ng.ts";
 
 export interface CollectorPlugin {
   id: string;
@@ -204,6 +208,92 @@ collectorManager.register({
           },
           detail: `SpiderFoot OTX pulse query returned threat score ${otx.threatScore} with ${otx.pulseCount} threat intelligence pulses.`,
           checked_at: new Date().toISOString(),
+        });
+      }
+    } catch {
+      // safe fallback
+    }
+
+    // Integrate Subfinder Passive Subdomain Enumeration
+    try {
+      const sf = await runSubfinderScan(query, { offline: options?.offline });
+      if (sf.subdomains.length > 0) {
+        domainEvidence.push({
+          provider: "Subfinder Passive Enumeration",
+          category: "domain",
+          profile_url: `https://${query}`,
+          domain: query,
+          status: "observed",
+          verified: true,
+          http_status: 200,
+          confidence: "high",
+          identity_name: `${sf.subdomains.length} Subfinder Hosts`,
+          identifier_display: `Found ${sf.subdomains.length} subdomains (${sf.durationMs}ms)`,
+          fields_count: sf.subdomains.length,
+          extra_fields: {
+            "Sources": sf.sourcesUsed.join(", "),
+            "Subdomains Found": sf.subdomains.slice(0, 10).join(", "),
+            "Total": String(sf.totalFound),
+          },
+          detail: `Subfinder fast passive enumeration identified ${sf.subdomains.length} subdomains across ${sf.sourcesUsed.join(", ")}.`,
+          checked_at: sf.checkedAt,
+        });
+      }
+    } catch {
+      // safe fallback
+    }
+
+    // Integrate OWASP Amass Attack Surface Discovery
+    try {
+      const am = await runAmassScan(query, { offline: options?.offline });
+      if (am.assets.length > 0) {
+        domainEvidence.push({
+          provider: "OWASP Amass Attack Surface Engine",
+          category: "domain",
+          profile_url: `https://${query}`,
+          domain: query,
+          status: "observed",
+          verified: true,
+          http_status: 200,
+          confidence: "high",
+          identity_name: `Amass Topology (${am.summary.totalAssets} nodes)`,
+          identifier_display: `${am.summary.totalSubdomains} subdomains · ${am.summary.totalRelations} relations`,
+          fields_count: am.assets.length,
+          extra_fields: {
+            "Total Assets": String(am.summary.totalAssets),
+            "Subdomains": String(am.summary.totalSubdomains),
+            "Graph Relations": String(am.summary.totalRelations),
+          },
+          detail: `OWASP Amass attack surface graph mapped ${am.summary.totalAssets} assets with ${am.summary.totalRelations} topology relationships.`,
+          checked_at: am.checkedAt,
+        });
+      }
+    } catch {
+      // safe fallback
+    }
+
+    // Integrate Recon-ng Modular Reconnaissance
+    try {
+      const rng = await runReconNgScan(query, { offline: options?.offline });
+      if (rng.hosts.length > 0 || rng.contacts.length > 0) {
+        domainEvidence.push({
+          provider: "Recon-ng Modular Pipeline",
+          category: "domain",
+          profile_url: `https://${query}`,
+          domain: query,
+          status: "observed",
+          verified: true,
+          http_status: 200,
+          confidence: "high",
+          identity_name: `Recon-ng Workspace: ${rng.workspace}`,
+          identifier_display: `${rng.summary.totalHosts} hosts · ${rng.summary.totalContacts} contacts`,
+          fields_count: rng.hosts.length + rng.contacts.length,
+          extra_fields: {
+            "Discovered Contacts": rng.contacts.map((c) => c.email).join(", "),
+            "Modules Executed": rng.modulesExecuted.join(", "),
+          },
+          detail: `Recon-ng pipeline executed ${rng.modulesExecuted.length} modules, discovering ${rng.hosts.length} hosts and ${rng.contacts.length} administrative contacts.`,
+          checked_at: rng.checkedAt,
         });
       }
     } catch {
@@ -501,6 +591,40 @@ collectorManager.register({
         });
 
         if (s.domain) existingDomains.add(s.domain.toLowerCase());
+      }
+    } catch {
+      // safe fallback
+    }
+
+    // Integrate Maigret Deep Username Dossier Gathering
+    try {
+      const maigretResults = await runMaigretScan(query, {
+        offline: options?.offline,
+        limit: 15,
+      });
+
+      for (const m of maigretResults) {
+        if (m.status !== "candidate" && m.status !== "observed") continue;
+        results.push({
+          provider: `Maigret: ${m.site}`,
+          category: "identity",
+          profile_url: m.url,
+          domain: m.site.toLowerCase().includes(".") ? m.site.toLowerCase() : `${m.site.toLowerCase()}.com`,
+          status: m.status,
+          verified: m.status === "observed",
+          http_status: m.httpStatus,
+          confidence: m.confidence,
+          identifier_display: `@${query} on ${m.site}`,
+          fields_count: 1,
+          extra_fields: {
+            "Engine": "Maigret Dossier Recon",
+            "Site": m.site,
+            "Tags": m.tags.join(", "),
+            "Profile URL": m.url,
+          },
+          detail: m.detail,
+          checked_at: m.checkedAt,
+        });
       }
     } catch {
       // safe fallback

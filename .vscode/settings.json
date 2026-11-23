@@ -1,0 +1,20 @@
+{
+  "terminal.integrated.profiles.windows": {
+    "PowerShell (Bypass)": {
+      "source": "PowerShell",
+      "args": ["-ExecutionPolicy", "Bypass"]
+    },
+    "Command Prompt": {
+      "path": "cmd.exe"
+    }
+  },
+  "terminal.integrated.defaultProfile.windows": "PowerShell (Bypass)",
+  "typescript.validate.enable": true,
+  "git.autoPush": false,
+  "git.confirmSync": true,
+  "git.enableSmartCommit": false,
+  "files.exclude": {
+    "**/.git": true,
+    "**/.wrangler": true
+  }
+}

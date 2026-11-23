@@ -1,0 +1,63 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "🚀 Start ShadowTrace Dev Server",
+      "type": "shell",
+      "command": "npm run dev",
+      "windows": {
+        "command": "npm.cmd run dev"
+      },
+      "isBackground": true,
+      "problemMatcher": {
+        "pattern": {
+          "regexp": "^$"
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "ShadowTrace OSINT Server is LIVE",
+          "endsPattern": "Actively listening for incoming"
+        }
+      },
+      "group": {
+        "kind": "build",
+        "isDefault": false
+      }
+    },
+    {
+      "label": "⚡ Rebuild Reference Catalogs",
+      "type": "shell",
+      "command": "npm run catalogs:build",
+      "windows": {
+        "command": "npm.cmd run catalogs:build"
+      },
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "🧪 Run All Tests",
+      "type": "shell",
+      "command": "npm test",
+      "windows": {
+        "command": "npm.cmd test"
+      },
+      "group": {
+        "kind": "test",
+        "isDefault": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "🩺 Run System Doctor",
+      "type": "shell",
+      "command": "npm run doctor",
+      "windows": {
+        "command": "npm.cmd run doctor"
+      },
+      "problemMatcher": []
+    }
+  ]
+}

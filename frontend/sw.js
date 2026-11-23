@@ -5,7 +5,9 @@ const STATIC_ASSETS = [
   "/index.html",
   "/osint-tools.json",
   "/healthz",
-  "/api/v1/system/mode"
+  "/api/v1/system/mode",
+  "/api/v1/catalogs/stats",
+  "/api/v1/tools/status"
 ];
 
 self.addEventListener("install", (event) => {

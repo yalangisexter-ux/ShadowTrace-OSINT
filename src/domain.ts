@@ -46,6 +46,14 @@ export interface DomainResult {
 const DOMAIN_RE = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/i;
 const RECORD_TYPES: Record<string, number> = { A: 1, NS: 2, MX: 15, TXT: 16, AAAA: 28 };
 
+export function validateDomain(rawDomain: string): string {
+  const domain = rawDomain.trim().toLowerCase().replace(/\.$/, "");
+  if (!DOMAIN_RE.test(domain) || /\.(localhost|local|internal|test|invalid|example|onion)$/.test(domain)) {
+    throw new Error("Enter a valid public domain name without a URL path.");
+  }
+  return domain;
+}
+
 async function queryDns(name: string, type: string): Promise<DnsLookup> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 4500);

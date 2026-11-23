@@ -30,6 +30,12 @@ import { runSherlockScan } from "./sherlock.ts";
 import { generatePhoneInfogaFootprint } from "./phoneinfoga.ts";
 import { runTheHarvesterScan } from "./harvester.ts";
 import { analyzePhoneNumber } from "./phone.ts";
+import { runMaigretScan } from "./maigret.ts";
+import { runReconNgScan } from "./recon_ng.ts";
+import { runAmassScan } from "./amass.ts";
+import { runSubfinderScan } from "./subfinder.ts";
+import { queryApis, queryOsint, getStats } from "./catalogs.ts";
+import { runDoctorCheck } from "./doctor.ts";
 
 function getSecretKey(env: Env): string {
   // Legacy fallback retained to avoid breaking existing sessions until the
@@ -127,7 +133,7 @@ app.use("*", async (c, next) => {
 });
 
 // Landing page / static frontend
-app.get("/", async (c) => {
+const handleIndex = async (c: any) => {
   if (c.env.ASSETS) {
     try {
       const assetRes = await c.env.ASSETS.fetch(c.req.raw);
@@ -142,6 +148,19 @@ app.get("/", async (c) => {
     architecture: "Next-Gen Modular AI-Powered OSINT Engine",
     modules: ["domain", "ip", "email", "username", "phone", "crypto", "metadata"],
     status: "healthy",
+  });
+};
+
+app.get("/", handleIndex);
+app.get("/index.html", handleIndex);
+
+// System statistics endpoint
+app.get("/system_stats", (c) => {
+  return c.json({
+    status: "ok",
+    service: "shadowtrace-osint",
+    version: "2.0.0",
+    timestamp: new Date().toISOString(),
   });
 });
 
@@ -289,6 +308,17 @@ app.get("/api/v1/system/mode", async (c) => {
     mode: isOffline ? "offline" : "online",
     app_env: c.env.APP_ENV || "development",
     offline_ready: true,
+  });
+});
+
+// System Stats & Repositories Health Check
+app.get("/system_stats", async (c) => {
+  const report = runDoctorCheck();
+  return c.json({
+    status: "ok",
+    service: "shadowtrace-osint",
+    version: "2.0.0",
+    ...report,
   });
 });
 
@@ -465,12 +495,17 @@ async function handleSearch(c: any) {
   // Dispatch to the unified Collector Manager
   const depth = parseInt(body.depth || "0", 10) || 0;
   const isOffline = body.offline === true || c.env.OFFLINE_MODE === "true" || c.req.header("x-offline-mode") === "true";
-  const collectionResult = await collectorManager.dispatch(rawQuery, searchType, { depth, offline: isOffline });
+  let collectionResult: any;
+  try {
+    collectionResult = await collectorManager.dispatch(rawQuery, searchType, { depth, offline: isOffline });
+  } catch (err: any) {
+    return c.json({ detail: err.message || "Failed to execute search collection" }, 422);
+  }
 
   const queryLabel = collectionResult.label || rawQuery;
   const entities = collectionResult.entities;
   const results = collectionResult.evidence;
-  const candidates = results.filter((r) => r.status === "candidate").length;
+  const candidates = results.filter((r: any) => r.status === "candidate").length;
 
   const threatMatrix = calculateThreatMatrix(results, searchType, isOffline);
   const correlations = evaluateSpiderFootCorrelations(queryLabel, searchType, results);
@@ -483,7 +518,7 @@ async function handleSearch(c: any) {
   // If authenticated and DB available, persist run
   if (user && c.env.DB) {
     try {
-      const dbEvidence = results.map(r => ({
+      const dbEvidence = results.map((r: any) => ({
         provider: r.provider,
         category: r.category || "identity",
         profile_url: r.profile_url || "",
@@ -617,6 +652,100 @@ app.post("/api/v1/tools/theharvester", async (c) => {
     tool: "theharvester",
     ...result,
   });
+});
+
+app.post("/api/v1/tools/maigret", async (c) => {
+  let body: any = {};
+  try { body = await c.req.json(); } catch { return c.json({ detail: "Invalid JSON body" }, 400); }
+  const username = typeof body.username === "string" ? body.username.trim() : (typeof body.query === "string" ? body.query.trim() : "");
+  if (!username) return c.json({ detail: "Username required" }, 422);
+
+  const isOffline = body.offline === true || c.env.OFFLINE_MODE === "true" || c.req.header("x-offline-mode") === "true";
+  const limit = typeof body.limit === "number" ? body.limit : 50;
+  const tags = Array.isArray(body.tags) ? body.tags : undefined;
+  const results = await runMaigretScan(username, { offline: isOffline, limit, tags });
+
+  return c.json({
+    tool: "maigret",
+    username,
+    offline: isOffline,
+    total_checked: results.length,
+    found: results.filter(r => r.status === "candidate" || r.status === "observed"),
+    results,
+    checked_at: new Date().toISOString(),
+  });
+});
+
+app.post("/api/v1/tools/recon-ng", async (c) => {
+  let body: any = {};
+  try { body = await c.req.json(); } catch { return c.json({ detail: "Invalid JSON body" }, 400); }
+  const domain = typeof body.domain === "string" ? body.domain.trim() : (typeof body.query === "string" ? body.query.trim() : "");
+  if (!domain) return c.json({ detail: "Domain required" }, 422);
+
+  const isOffline = body.offline === true || c.env.OFFLINE_MODE === "true" || c.req.header("x-offline-mode") === "true";
+  const result = await runReconNgScan(domain, { offline: isOffline, modules: body.modules });
+
+  return c.json(result);
+});
+
+app.post("/api/v1/tools/amass", async (c) => {
+  let body: any = {};
+  try { body = await c.req.json(); } catch { return c.json({ detail: "Invalid JSON body" }, 400); }
+  const domain = typeof body.domain === "string" ? body.domain.trim() : (typeof body.query === "string" ? body.query.trim() : "");
+  if (!domain) return c.json({ detail: "Domain required" }, 422);
+
+  const isOffline = body.offline === true || c.env.OFFLINE_MODE === "true" || c.req.header("x-offline-mode") === "true";
+  const result = await runAmassScan(domain, { offline: isOffline });
+
+  return c.json(result);
+});
+
+app.post("/api/v1/tools/subfinder", async (c) => {
+  let body: any = {};
+  try { body = await c.req.json(); } catch { return c.json({ detail: "Invalid JSON body" }, 400); }
+  const domain = typeof body.domain === "string" ? body.domain.trim() : (typeof body.query === "string" ? body.query.trim() : "");
+  if (!domain) return c.json({ detail: "Domain required" }, 422);
+
+  const isOffline = body.offline === true || c.env.OFFLINE_MODE === "true" || c.req.header("x-offline-mode") === "true";
+  const result = await runSubfinderScan(domain, { offline: isOffline });
+
+  return c.json(result);
+});
+
+// Catalogs Endpoints (Searching the 7 upstream reference repositories)
+app.get("/api/v1/catalogs/stats", async (c) => {
+  const stats = getStats();
+  return c.json(stats);
+});
+
+app.get("/api/v1/catalogs/apis", async (c) => {
+  const q = c.req.query("q");
+  const category = c.req.query("category");
+  const auth = c.req.query("auth");
+  const https = c.req.query("https");
+  const source = c.req.query("source");
+  const page = parseInt(c.req.query("page") || "1", 10) || 1;
+  const limit = parseInt(c.req.query("limit") || "40", 10) || 40;
+
+  const result = queryApis({ q, category, auth, https, source, page, limit });
+  return c.json(result);
+});
+
+app.get("/api/v1/catalogs/osint", async (c) => {
+  const q = c.req.query("q");
+  const category = c.req.query("category");
+  const source = c.req.query("source");
+  const page = parseInt(c.req.query("page") || "1", 10) || 1;
+  const limit = parseInt(c.req.query("limit") || "40", 10) || 40;
+
+  const result = queryOsint({ q, category, source, page, limit });
+  return c.json(result);
+});
+
+// System Doctor / Repository Status
+app.get("/api/v1/tools/status", async (c) => {
+  const report = runDoctorCheck();
+  return c.json(report);
 });
 
 // Search: List past investigations

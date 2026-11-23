@@ -16,7 +16,9 @@
     "d1:migrate:local": "wrangler d1 migrations apply shadowtrace-db --local",
     "d1:migrate:remote": "wrangler d1 migrations apply shadowtrace-db --remote",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test tests/worker.test.mjs"
+    "catalogs:build": "tsx scripts/build-catalogs.ts",
+    "doctor": "tsx scripts/run-doctor.ts",
+    "test": "node --experimental-strip-types --test tests/worker.test.mjs tests/reference_tools.test.mjs"
   },
   "dependencies": {
     "hono": "^4.6.14"
@@ -24,6 +26,7 @@
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20261104.1",
     "@hono/node-server": "^2.1.8",
+    "@types/node": "^26.6.6",
     "tsx": "^4.23.15",
     "typescript": "^5.7.2",
     "wrangler": "^4.158.0"
