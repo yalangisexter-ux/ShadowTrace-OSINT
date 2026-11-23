@@ -153,6 +153,17 @@ app.get("/osint-tools.json", async (c) => {
   return c.json({ error: "OSINT toolbox catalog requires static assets deployment" }, 404);
 });
 
+// Offline Service Worker endpoint
+app.get("/sw.js", async (c) => {
+  if (c.env.ASSETS) {
+    try {
+      const assetRes = await c.env.ASSETS.fetch(c.req.raw);
+      if (assetRes.status === 200) return assetRes;
+    } catch {}
+  }
+  return c.text("// Service Worker unavailable", 404);
+});
+
 // Auth helper
 async function requireAuth(c: any): Promise<UserRow> {
   const authHeader = c.req.header("Authorization");
