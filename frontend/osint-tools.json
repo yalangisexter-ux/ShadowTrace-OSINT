@@ -10,7 +10,7 @@
     "license": "MIT",
     "attribution": "HackingTool by Mr.Z4nzu; catalog metadata adapted for discovery. See upstream LICENSE."
   },
-  "notice": "This is a curated OSINT-focused subset, not a bundled copy of HackingTool or its third-party tools. External tools are reference links only; ShadowTrace does not install or execute them.",
+  "notice": "ShadowTrace integrates code and intelligence capabilities directly ported from SpiderFoot, Sherlock, Maigret, PhoneInfoga, and theHarvester. Additional specialized tools are cataloged with upstream references.",
   "tools": [
     {
       "id": "st-domain",
@@ -131,23 +131,26 @@
         "subdomain-enum",
         "recon"
       ],
-      "description": "Collects publicly available names, emails, IPs, subdomains and URLs from supported public sources.",
-      "status": "reference",
-      "source": "HackingTool catalog",
+      "description": "Integrated theHarvester passive discovery: queries HackerTarget hostsearch, CertSpotter CT log streams, and passive DNS.",
+      "status": "integrated",
+      "searchType": "domain",
+      "source": "Ported from laramies/theHarvester",
       "url": "https://github.com/laramies/theHarvester"
     },
     {
       "id": "maigret",
-      "name": "Maigret",
+      "name": "Maigret & Sherlock",
       "category": "OSINT & Recon",
       "tags": [
         "osint",
         "username",
-        "lookup"
+        "lookup",
+        "sherlock"
       ],
-      "description": "Username search across public websites. Treat hits as candidate leads and manually validate them.",
-      "status": "reference",
-      "source": "HackingTool catalog",
+      "description": "Integrated Sherlock & Maigret reconnaissance: checks 60+ platforms across dev, social, gaming, and finance with regex filters.",
+      "status": "integrated",
+      "searchType": "username",
+      "source": "Ported from sherlock-project/sherlock & soxoj/maigret",
       "url": "https://github.com/soxoj/maigret"
     },
     {
@@ -157,11 +160,14 @@
       "tags": [
         "osint",
         "recon",
-        "automation"
+        "automation",
+        "alienvault",
+        "bgpview"
       ],
-      "description": "OSINT automation platform with a broad set of public-data modules.",
-      "status": "reference",
-      "source": "HackingTool catalog",
+      "description": "Integrated SpiderFoot modular engine: features BGPView ASN routing, AlienVault OTX threat pulses, tracking ID analytics, and correlation rules.",
+      "status": "integrated",
+      "searchType": "domain",
+      "source": "Ported from smicallef/spiderfoot",
       "url": "https://github.com/smicallef/spiderfoot"
     },
     {

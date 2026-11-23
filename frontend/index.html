@@ -1096,6 +1096,7 @@ let filterQuery = "";
 let currentGraph = null;
 let currentAI = null;
 let currentThreatMatrix = null;
+let currentCorrelations = [];
 
 const el = (id) => document.getElementById(id);
 
@@ -1315,6 +1316,7 @@ function renderSearchResults(data) {
   currentGraph = data.graph || null;
   currentAI = data.ai || null;
   currentThreatMatrix = data.threat_matrix || null;
+  currentCorrelations = data.correlations || [];
 
   const matches = currentResults.filter(e => e.status === "candidate").length;
   const observations = currentResults.filter(e => e.status === "observed").length;
@@ -1486,14 +1488,25 @@ function renderPlatformCards() {
             ${escapeHtml(item.identifier_display || item.detail)}
           </div>
 
+          ${item.provider === "PhoneInfoga Direct Inquiries" && item.extra_fields ? `
+            <div style="display:flex;gap:6px;margin:8px 0;flex-wrap:wrap;">
+              ${item.extra_fields.WhatsApp ? `<a class="outline" style="font-size:11px;padding:3px 8px;border-color:rgba(34,197,94,0.4);color:#4ade80;" href="${escapeHtml(item.extra_fields.WhatsApp)}" target="_blank" rel="noopener noreferrer">💬 WhatsApp</a>` : ''}
+              ${item.extra_fields.Telegram ? `<a class="outline" style="font-size:11px;padding:3px 8px;border-color:rgba(56,189,248,0.4);color:#38bdf8;" href="${escapeHtml(item.extra_fields.Telegram)}" target="_blank" rel="noopener noreferrer">✈️ Telegram</a>` : ''}
+              ${item.extra_fields.Viber ? `<a class="outline" style="font-size:11px;padding:3px 8px;border-color:rgba(168,85,247,0.4);color:#c084fc;" href="${escapeHtml(item.extra_fields.Viber)}" target="_blank" rel="noopener noreferrer">🟣 Viber</a>` : ''}
+              ${item.extra_fields.SMS ? `<a class="outline" style="font-size:11px;padding:3px 8px;border-color:rgba(245,158,11,0.4);color:#fbbf24;" href="${escapeHtml(item.extra_fields.SMS)}" target="_blank" rel="noopener noreferrer">📱 SMS</a>` : ''}
+            </div>
+          ` : ''}
+
           ${hasExtra ? `
             <div id="extra_${idx}" class="extra-fields-panel hidden">
-              ${Object.entries(item.extra_fields).map(([k, v]) => `
+              ${Object.entries(item.extra_fields).map(([k, v]) => {
+                const isUrl = typeof v === "string" && (v.startsWith("http://") || v.startsWith("https://") || v.startsWith("sms:") || v.startsWith("tel:") || v.startsWith("viber:"));
+                return `
                 <div class="extra-field-item">
                   <span class="extra-field-lbl">${escapeHtml(k)}:</span>
-                  <span class="extra-field-val">${escapeHtml(v)}</span>
+                  <span class="extra-field-val">${isUrl ? `<a href="${escapeHtml(v)}" target="_blank" rel="noopener noreferrer" style="color:var(--cyan);text-decoration:underline;word-break:break-all;">${escapeHtml(v)} ↗</a>` : escapeHtml(v)}</span>
                 </div>
-              `).join("")}
+              `;}).join("")}
             </div>
           ` : ''}
         </div>
@@ -1604,7 +1617,32 @@ function renderThreatMatrix() {
   const credentialRisk = matrix.credential_reuse_risk || "Not assessed";
   const phishingSurface = matrix.phishing_surface || "Not assessed";
 
-  const cards = [
+  const cards = [];
+
+  if (currentCorrelations && currentCorrelations.length > 0) {
+    cards.push(`
+      <div class="matrix-card" style="grid-column: 1 / -1; border-color: rgba(239, 68, 68, 0.4); background: rgba(239, 68, 68, 0.05);">
+        <div class="matrix-card-title" style="color: #f87171; display: flex; align-items: center; justify-content: space-between;">
+          <span>🕷️ SpiderFoot Multi-Source Intelligence Correlations (${currentCorrelations.length})</span>
+          <span style="font-size:10px;padding:2px 8px;border-radius:12px;background:rgba(239,68,68,0.2);color:#fca5a5;">ACTIVE HEURISTICS</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px;margin-top:10px;">
+          ${currentCorrelations.map(c => `
+            <div style="padding:10px;border-radius:8px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+                <strong style="color:var(--text);font-size:13px;">${escapeHtml(c.title)}</strong>
+                <span style="font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px;color:#fff;background:${c.risk === 'CRITICAL' ? '#ef4444' : c.risk === 'HIGH' ? '#f97316' : c.risk === 'MEDIUM' ? '#eab308' : '#3b82f6'};">${escapeHtml(c.risk)}</span>
+              </div>
+              <p style="font-size:12px;color:var(--text-muted);margin:0 0 4px 0;">${escapeHtml(c.description)}</p>
+              <div style="font-size:11px;color:var(--cyan);"><strong>Action:</strong> ${escapeHtml(c.recommendation)}</div>
+            </div>
+          `).join("")}
+        </div>
+      </div>
+    `);
+  }
+
+  cards.push(
     `
       <div class="matrix-card">
         <div class="matrix-card-title">Threat Classification</div>
@@ -2112,16 +2150,27 @@ function renderToolbox() {
   grid.innerHTML = items.map(tool => {
     const integrated = tool.status === "integrated";
     const action = integrated
-      ? '<button class="primary" type="button" onclick="openNativeTool(\'' + escapeHtml(tool.searchType) + '\')">Open module ↗</button>'
+      ? '<button class="primary" type="button" onclick="openNativeTool(\'' + escapeHtml(tool.searchType) + '\', \'' + escapeHtml(tool.id) + '\')">Open module ↗</button>'
       : '<a class="outline" href="' + escapeHtml(tool.url) + '" target="_blank" rel="noopener noreferrer">Upstream project ↗</a>';
     return '<article class="toolbox-card"><div class="toolbox-card-top"><span class="toolbox-category">' + escapeHtml(tool.category) + '</span><span class="toolbox-status ' + (integrated ? '' : 'reference') + '">' + (integrated ? 'NATIVE · LIVE MODULE' : 'REFERENCE ONLY') + '</span></div><h4>' + escapeHtml(tool.name) + '</h4><p>' + escapeHtml(tool.description) + '</p><div class="toolbox-tags">' + (tool.tags || []).map(tag => '<span class="toolbox-tag">' + escapeHtml(tag) + '</span>').join('') + '</div><div class="toolbox-card-foot"><small>' + escapeHtml(tool.source) + '</small>' + action + '</div></article>';
   }).join("");
 }
 function openToolbox() { el("osintToolbox")?.scrollIntoView({ behavior: "smooth", block: "start" }); }
-function openNativeTool(type) {
-  if (!type) return;
-  setSearchType(type);
-  el("searchInput")?.focus();
+function openNativeTool(type, toolId) {
+  if (type) setSearchType(type);
+  const input = el("searchInput");
+  if (input) {
+    if (toolId === "spiderfoot") {
+      input.placeholder = "Enter domain or IP for SpiderFoot passive reconnaissance...";
+    } else if (toolId === "sherlock" || toolId === "maigret") {
+      input.placeholder = "Enter username for 60+ platform reconnaissance...";
+    } else if (toolId === "phoneinfoga") {
+      input.placeholder = "Enter phone number for PhoneInfoga telecom scanner...";
+    } else if (toolId === "theharvester") {
+      input.placeholder = "Enter domain for theHarvester passive host discovery...";
+    }
+    input.focus();
+  }
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 

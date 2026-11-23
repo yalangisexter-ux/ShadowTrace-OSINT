@@ -1,0 +1,569 @@
+[
+  {
+    "name": "GitHub",
+    "category": "code",
+    "urlTemplate": "https://www.github.com/{username}",
+    "domain": "github.com",
+    "errorType": "status_code",
+    "errorMsg": null,
+    "regexCheck": "^[a-zA-Z0-9](?:[a-zA-Z0-9]|-(?=[a-zA-Z0-9])){0,38}$"
+  },
+  {
+    "name": "GitLab",
+    "category": "code",
+    "urlTemplate": "https://gitlab.com/{username}",
+    "domain": "gitlab.com",
+    "errorType": "message",
+    "errorMsg": "[]",
+    "regexCheck": null
+  },
+  {
+    "name": "Codeberg",
+    "category": "code",
+    "urlTemplate": "https://codeberg.org/{username}",
+    "domain": "codeberg.org",
+    "errorType": "status_code",
+    "errorMsg": null,
+    "regexCheck": null
+  },
+  {
+    "name": "BitBucket",
+    "category": "social",
+    "urlTemplate": "https://bitbucket.org/{username}/",
+    "domain": "bitbucket.org",
+    "errorType": "status_code",
+    "errorMsg": null,
+    "regexCheck": "^[a-zA-Z0-9-_]{1,30}$"
+  },
+  {
+    "name": "Docker Hub",
+    "category": "code",
+    "urlTemplate": "https://hub.docker.com/u/{username}/",
+    "domain": "hub.docker.com",
+    "errorType": "status_code",
+    "errorMsg": null,
+    "regexCheck": null
+  },
+  {
+    "name": "npm",
+    "category": "code",
+    "urlTemplate": "https://www.npmjs.com/~{username}",
+    "domain": "npmjs.com",
+    "errorType": "status_code",
+    "errorMsg": null,
+    "regexCheck": null
+  },
+  {
+    "name": "PyPi",
+    "category": "code",
+    "urlTemplate": "https://pypi.org/user/{username}",
+    "domain": "pypi.org",
+    "errorType": "status_code",
+    "errorMsg": null,
+    "regexCheck": null
+  },
+  {
+    "name": "HackerNews",
+    "category": "code",
+    "urlTemplate": "https://news.ycombinator.com/user?id={username}",
+    "domain": "news.ycombinator.com",
+    "errorType": "message",
+    "errorMsg": [
+      "No such user.",
+      "Sorry."
+    ],
+    "regexCheck": null
+  },
+  {
+    "name": "Kaggle",
+    "category": "code",
+    "urlTemplate": "https://www.kaggle.com/{username}",
+    "domain": "kaggle.com",
+    "errorType": "status_code",
+    "errorMsg": null,
+    "regexCheck": null
+  },
+  {
+    "name": "LeetCode",
+    "category": "code",
+    "urlTemplate": "https://leetcode.com/{username}",
+    "domain": "leetcode.com",
+    "errorType": "status_code",
+    "errorMsg": null,
+    "regexCheck": null
+  },
+  {
+    "name": "Codeforces",
+    "category": "code",
+    "urlTemplate": "https://codeforces.com/profile/{username}",
+    "domain": "codeforces.com",
+    "errorType": "status_code",
+    "errorMsg": null,
+    "regexCheck": null
+  },
+  {
+    "name": "DEV Community",
+    "category": "code",
+    "urlTemplate": "https://dev.to/{username}",
+    "domain": "dev.to",
+    "errorType": "status_code",
+    "errorMsg": null,
+    "regexCheck": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+  },
+  {
+    "name": "Hashnode",
+    "category": "social",
+    "urlTemplate": "https://hashnode.com/@{username}",
+    "domain": "hashnode.com",
+    "errorType": "status_code",
+    "errorMsg": null,
+    "regexCheck": null
+  },
+  {
+    "name": "Reddit",
+    "category": "social",
+    "urlTemplate": "https://www.reddit.com/user/{username}",
+    "domain": "reddit.com",
+    "errorType": "message",
+    "errorMsg": "Sorry, nobody on Reddit goes by that name.",
+    "regexCheck": null
+  },
+  {
+    "name": "Telegram",
+    "category": "social",
+    "urlTemplate": "https://t.me/{username}",
+    "domain": "t.me",
+    "errorType": "message",
+    "errorMsg": [
+      "<title>Telegram Messenger</title>",
+      "If you have <strong>Telegram</strong>, you can contact <a class=\"tgme_username_link\" href=\"tg://resolve?domain="
+    ],
+    "regexCheck": "^[a-zA-Z0-9_]{3,32}[^_]$"
+  },
+  {
+    "name": "Twitter",
+    "category": "social",
+    "urlTemplate": "https://x.com/{username}",
+    "domain": "x.com",
+    "errorType": "message",
+    "errorMsg": [
+      "<div class=\"error-panel\"><span>User ",
+      "<title>429 Too Many Requests</title>"
+    ],
+    "regexCheck": "^[a-zA-Z0-9_]{1,15}$"
+  },
+  {
+    "name": "Instagram",
+    "category": "social",
+    "urlTemplate": "https://instagram.com/{username}",
+    "domain": "instagram.com",
+    "errorType": "status_code",
+    "errorMsg": null,
+    "regexCheck": null
+  },
+  {
+    "name": "TikTok",
+    "category": "social",
+    "urlTemplate": "https://www.tiktok.com/@{username}",
+    "domain": "tiktok.com",
+    "errorType": "message",
+    "errorMsg": [
+      "\"statusCode\":10221",
+      "Govt. of India decided to block 59 apps"
+    ],
+    "regexCheck": null
+  },
+  {
+    "name": "YouTube",
+    "category": "media",
+    "urlTemplate": "https://www.youtube.com/@{username}",
+    "domain": "youtube.com",
+    "errorType": "status_code",
+    "errorMsg": null,
+    "regexCheck": null
+  },
+  {
+    "name": "Twitch",
+    "category": "media",
+    "urlTemplate": "https://www.twitch.tv/{username}",
+    "domain": "twitch.tv",
+    "errorType": "message",
+    "errorMsg": "content='Twitch is the world&#39;s leading video platform and community for gamers.'",
+    "regexCheck": null
+  },
+  {
+    "name": "Pinterest",
+    "category": "social",
+    "urlTemplate": "https://www.pinterest.com/{username}/",
+    "domain": "pinterest.com",
+    "errorType": "status_code",
+    "errorMsg": null,
+    "regexCheck": null
+  },
+  {
+    "name": "Medium",
+    "category": "social",
+    "urlTemplate": "https://medium.com/@{username}",
+    "domain": "medium.com",
+    "errorType": "message",
+    "errorMsg": "<body",
+    "regexCheck": null
+  },
+  {
+    "name": "Substack",
+    "category": "social",
+    "urlTemplate": "https://{username}.substack.com/",
+    "domain": "substack.com",
+    "errorType": "status_code",
+    "errorMsg": null,
+    "regexCheck": "^[a-zA-Z0-9][a-zA-Z0-9_-]{1,60}$"
+  },
+  {
+    "name": "DeviantArt",
+    "category": "code",
+    "urlTemplate": "https://www.deviantart.com/{username}",
+    "domain": "deviantart.com",
+    "errorType": "message",
+    "errorMsg": "Llama Not Found",
+    "regexCheck": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+  },
+  {
+    "name": "Flickr",
+    "category": "media",
+    "urlTemplate": "https://www.flickr.com/people/{username}",
+    "domain": "flickr.com",
+    "errorType": "status_code",
+    "errorMsg": null,
+    "regexCheck": null
+  },
+  {
+    "name": "Vimeo",
+    "category": "media",
+    "urlTemplate": "https://vimeo.com/{username}",
+    "domain": "vimeo.com",
+    "errorType": "status_code",
+    "errorMsg": null,
+    "regexCheck": null
+  },
+  {
+    "name": "Disqus",
+    "category": "social",
+    "urlTemplate": "https://disqus.com/{username}",
+    "domain": "disqus.com",
+    "errorType": "status_code",
+    "errorMsg": null,
+    "regexCheck": null
+  },
+  {
+    "name": "Keybase",
+    "category": "identity",
+    "urlTemplate": "https://keybase.io/{username}",
+    "domain": "keybase.io",
+    "errorType": "status_code",
+    "errorMsg": null,
+    "regexCheck": null
+  },
+  {
+    "name": "Pastebin",
+    "category": "social",
+    "urlTemplate": "https://pastebin.com/u/{username}",
+    "domain": "pastebin.com",
+    "errorType": "message",
+    "errorMsg": "Not Found (#404)",
+    "regexCheck": null
+  },
+  {
+    "name": "BuyMeACoffee",
+    "category": "finance",
+    "urlTemplate": "https://buymeacoff.ee/{username}",
+    "domain": "buymeacoffee.com",
+    "errorType": "status_code",
+    "errorMsg": null,
+    "regexCheck": "[a-zA-Z0-9]{3,15}"
+  },
+  {
+    "name": "Patreon",
+    "category": "finance",
+    "urlTemplate": "https://www.patreon.com/{username}",
+    "domain": "patreon.com",
+    "errorType": "status_code",
+    "errorMsg": null,
+    "regexCheck": null
+  },
+  {
+    "name": "Linktree",
+    "category": "identity",
+    "urlTemplate": "https://linktr.ee/{username}",
+    "domain": "linktr.ee",
+    "errorType": "message",
+    "errorMsg": "\"statusCode\":404",
+    "regexCheck": "^[\\w\\.]{2,30}$"
+  },
+  {
+    "name": "Chess",
+    "category": "gaming",
+    "urlTemplate": "https://www.chess.com/member/{username}",
+    "domain": "chess.com",
+    "errorType": "message",
+    "errorMsg": "Username is valid",
+    "regexCheck": "^[a-zA-Z0-9_]{3,25}$"
+  },
+  {
+    "name": "Lichess",
+    "category": "gaming",
+    "urlTemplate": "https://lichess.org/@/{username}",
+    "domain": "lichess.org",
+    "errorType": "status_code",
+    "errorMsg": null,
+    "regexCheck": null
+  },
+  {
+    "name": "About.me",
+    "category": "identity",
+    "urlTemplate": "https://about.me/{username}",
+    "domain": "about.me",
+    "errorType": "status_code",
+    "errorMsg": null,
+    "regexCheck": null
+  },
+  {
+    "name": "Behance",
+    "category": "creative",
+    "urlTemplate": "https://www.behance.net/{username}",
+    "domain": "behance.net",
+    "errorType": "status_code",
+    "errorMsg": null,
+    "regexCheck": null
+  },
+  {
+    "name": "Dribbble",
+    "category": "creative",
+    "urlTemplate": "https://dribbble.com/{username}",
+    "domain": "dribbble.com",
+    "errorType": "message",
+    "errorMsg": "Whoops, that page is gone.",
+    "regexCheck": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+  },
+  {
+    "name": "GoodReads",
+    "category": "social",
+    "urlTemplate": "https://www.goodreads.com/{username}",
+    "domain": "goodreads.com",
+    "errorType": "status_code",
+    "errorMsg": null,
+    "regexCheck": null
+  },
+  {
+    "name": "Gravatar",
+    "category": "identity",
+    "urlTemplate": "http://en.gravatar.com/{username}",
+    "domain": "en.gravatar.com",
+    "errorType": "status_code",
+    "errorMsg": null,
+    "regexCheck": "^((?!\\.).)*$"
+  },
+  {
+    "name": "Spotify",
+    "category": "media",
+    "urlTemplate": "https://open.spotify.com/user/{username}",
+    "domain": "open.spotify.com",
+    "errorType": "status_code",
+    "errorMsg": null,
+    "regexCheck": null
+  },
+  {
+    "name": "SoundCloud",
+    "category": "media",
+    "urlTemplate": "https://soundcloud.com/{username}",
+    "domain": "soundcloud.com",
+    "errorType": "status_code",
+    "errorMsg": null,
+    "regexCheck": null
+  },
+  {
+    "name": "Archive.org",
+    "category": "social",
+    "urlTemplate": "https://archive.org/details/@{username}",
+    "domain": "archive.org",
+    "errorType": "message",
+    "errorMsg": [
+      "could not fetch an account with user item identifier",
+      "The resource could not be found",
+      "Internet Archive services are temporarily offline"
+    ],
+    "regexCheck": null
+  },
+  {
+    "name": "Blogger",
+    "category": "social",
+    "urlTemplate": "https://{username}.blogspot.com",
+    "domain": "blogger.com",
+    "errorType": "status_code",
+    "errorMsg": null,
+    "regexCheck": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+  },
+  {
+    "name": "Bandcamp",
+    "category": "social",
+    "urlTemplate": "https://www.bandcamp.com/{username}",
+    "domain": "bandcamp.com",
+    "errorType": "status_code",
+    "errorMsg": null,
+    "regexCheck": null
+  },
+  {
+    "name": "BuzzFeed",
+    "category": "social",
+    "urlTemplate": "https://buzzfeed.com/{username}",
+    "domain": "buzzfeed.com",
+    "errorType": "status_code",
+    "errorMsg": null,
+    "regexCheck": null
+  },
+  {
+    "name": "Crowdin",
+    "category": "social",
+    "urlTemplate": "https://crowdin.com/profile/{username}",
+    "domain": "crowdin.com",
+    "errorType": "status_code",
+    "errorMsg": null,
+    "regexCheck": "^[a-zA-Z0-9._-]{2,255}$"
+  },
+  {
+    "name": "Giphy",
+    "category": "media",
+    "urlTemplate": "https://giphy.com/{username}",
+    "domain": "giphy.com",
+    "errorType": "message",
+    "errorMsg": "<title> GIFs - Find &amp; Share on GIPHY</title>",
+    "regexCheck": null
+  },
+  {
+    "name": "Instructables",
+    "category": "social",
+    "urlTemplate": "https://www.instructables.com/member/{username}",
+    "domain": "instructables.com",
+    "errorType": "status_code",
+    "errorMsg": null,
+    "regexCheck": null
+  },
+  {
+    "name": "Letterboxd",
+    "category": "social",
+    "urlTemplate": "https://letterboxd.com/{username}",
+    "domain": "letterboxd.com",
+    "errorType": "message",
+    "errorMsg": "Sorry, we can\u2019t find the page you\u2019ve requested.",
+    "regexCheck": null
+  },
+  {
+    "name": "MyAnimeList",
+    "category": "social",
+    "urlTemplate": "https://myanimelist.net/profile/{username}",
+    "domain": "myanimelist.net",
+    "errorType": "status_code",
+    "errorMsg": null,
+    "regexCheck": null
+  },
+  {
+    "name": "OpenStreetMap",
+    "category": "social",
+    "urlTemplate": "https://www.openstreetmap.org/user/{username}",
+    "domain": "openstreetmap.org",
+    "errorType": "status_code",
+    "errorMsg": null,
+    "regexCheck": "^[^.]*?$"
+  },
+  {
+    "name": "ProductHunt",
+    "category": "social",
+    "urlTemplate": "https://www.producthunt.com/@{username}",
+    "domain": "producthunt.com",
+    "errorType": "status_code",
+    "errorMsg": null,
+    "regexCheck": null
+  },
+  {
+    "name": "Roblox",
+    "category": "gaming",
+    "urlTemplate": "https://www.roblox.com/user.aspx?username={username}",
+    "domain": "roblox.com",
+    "errorType": "status_code",
+    "errorMsg": null,
+    "regexCheck": null
+  },
+  {
+    "name": "Slack",
+    "category": "social",
+    "urlTemplate": "https://{username}.slack.com",
+    "domain": "slack.com",
+    "errorType": "status_code",
+    "errorMsg": null,
+    "regexCheck": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+  },
+  {
+    "name": "Smule",
+    "category": "social",
+    "urlTemplate": "https://www.smule.com/{username}",
+    "domain": "smule.com",
+    "errorType": "message",
+    "errorMsg": "Smule | Page Not Found (404)",
+    "regexCheck": null
+  },
+  {
+    "name": "Strava",
+    "category": "social",
+    "urlTemplate": "https://www.strava.com/athletes/{username}",
+    "domain": "strava.com",
+    "errorType": "status_code",
+    "errorMsg": null,
+    "regexCheck": "^[^.]*?$"
+  },
+  {
+    "name": "Venmo",
+    "category": "finance",
+    "urlTemplate": "https://account.venmo.com/u/{username}",
+    "domain": "venmo.com",
+    "errorType": "message",
+    "errorMsg": [
+      "Venmo | Page Not Found"
+    ],
+    "regexCheck": null
+  },
+  {
+    "name": "Wattpad",
+    "category": "social",
+    "urlTemplate": "https://www.wattpad.com/user/{username}",
+    "domain": "wattpad.com",
+    "errorType": "status_code",
+    "errorMsg": null,
+    "regexCheck": null
+  },
+  {
+    "name": "Weebly",
+    "category": "social",
+    "urlTemplate": "https://{username}.weebly.com/",
+    "domain": "weebly.com",
+    "errorType": "status_code",
+    "errorMsg": null,
+    "regexCheck": "^[a-zA-Z0-9-]{1,63}$"
+  },
+  {
+    "name": "Wikipedia",
+    "category": "social",
+    "urlTemplate": "https://en.wikipedia.org/wiki/Special:CentralAuth/{username}?uselang=qqx",
+    "domain": "wikipedia.org",
+    "errorType": "message",
+    "errorMsg": "centralauth-admin-nonexistent:",
+    "regexCheck": null
+  },
+  {
+    "name": "WordPress",
+    "category": "social",
+    "urlTemplate": "https://{username}.wordpress.com/",
+    "domain": "wordpress.com",
+    "errorType": "response_url",
+    "errorMsg": null,
+    "regexCheck": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+  }
+]

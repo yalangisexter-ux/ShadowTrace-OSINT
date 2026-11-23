@@ -25,6 +25,11 @@ import { collectorManager } from "./collector.ts";
 import { buildKnowledgeGraph } from "./graph.ts";
 import { generateAISummary } from "./ai.ts";
 import { generateMarkdownReport, generateCSVReport, generateHTMLReport } from "./report.ts";
+import { evaluateSpiderFootCorrelations, queryBgpView, queryAlienVaultOTX, type BgpViewResult } from "./spiderfoot.ts";
+import { runSherlockScan } from "./sherlock.ts";
+import { generatePhoneInfogaFootprint } from "./phoneinfoga.ts";
+import { runTheHarvesterScan } from "./harvester.ts";
+import { analyzePhoneNumber } from "./phone.ts";
 
 function getSecretKey(env: Env): string {
   // Legacy fallback retained to avoid breaking existing sessions until the
@@ -468,6 +473,7 @@ async function handleSearch(c: any) {
   const candidates = results.filter((r) => r.status === "candidate").length;
 
   const threatMatrix = calculateThreatMatrix(results, searchType, isOffline);
+  const correlations = evaluateSpiderFootCorrelations(queryLabel, searchType, results);
   const graph = buildKnowledgeGraph(queryLabel, searchType, entities, results);
   const aiSummary = generateAISummary(queryLabel, searchType, entities, results, threatMatrix);
 
@@ -509,6 +515,7 @@ async function handleSearch(c: any) {
         providers: results.length,
       },
       threat_matrix: threatMatrix,
+      correlations,
       offline: isOffline,
       evidence: results,
       graph,
@@ -522,6 +529,95 @@ async function handleSearch(c: any) {
 // Unified search routes
 app.post("/api/v1/search/username", handleSearch);
 app.post("/api/v1/search", handleSearch);
+
+// Dedicated OSINT Tools Endpoints
+app.post("/api/v1/tools/spiderfoot", async (c) => {
+  let body: any = {};
+  try { body = await c.req.json(); } catch { return c.json({ detail: "Invalid JSON body" }, 400); }
+  const target = typeof body.target === "string" ? body.target.trim() : (typeof body.query === "string" ? body.query.trim() : "");
+  if (!target) return c.json({ detail: "Target (domain or IP) required" }, 422);
+
+  const type = body.type === "ip" || body.type === "domain" ? body.type : (/^\d{1,3}(\.\d{1,3}){3}$/.test(target) ? "ip" : "domain");
+  const isOffline = body.offline === true || c.env.OFFLINE_MODE === "true" || c.req.header("x-offline-mode") === "true";
+
+  const [bgp, otx] = await Promise.all([
+    type === "ip" ? queryBgpView(target, { offline: isOffline }) : Promise.resolve<BgpViewResult>({ ok: false }),
+    queryAlienVaultOTX(target, type === "ip" ? "IPv4" : "domain", { offline: isOffline }),
+  ]);
+
+  const correlations = evaluateSpiderFootCorrelations(target, type, [
+    ...(bgp.ok ? [{ provider: "SpiderFoot BGPView", status: "observed", detail: `ASN: ${bgp.asn}` }] : []),
+    ...(otx.ok ? [{ provider: "SpiderFoot AlienVault", status: "observed", detail: `Score: ${otx.threatScore}` }] : []),
+  ]);
+
+  return c.json({
+    tool: "spiderfoot",
+    target,
+    type,
+    offline: isOffline,
+    bgpView: bgp,
+    alienVault: otx,
+    correlations,
+    checked_at: new Date().toISOString(),
+  });
+});
+
+app.post("/api/v1/tools/sherlock", async (c) => {
+  let body: any = {};
+  try { body = await c.req.json(); } catch { return c.json({ detail: "Invalid JSON body" }, 400); }
+  const username = typeof body.username === "string" ? body.username.trim() : (typeof body.query === "string" ? body.query.trim() : "");
+  if (!username) return c.json({ detail: "Username required" }, 422);
+
+  const isOffline = body.offline === true || c.env.OFFLINE_MODE === "true" || c.req.header("x-offline-mode") === "true";
+  const limit = typeof body.limit === "number" ? body.limit : 40;
+  const results = await runSherlockScan(username, { offline: isOffline, limit });
+
+  return c.json({
+    tool: "sherlock",
+    username,
+    offline: isOffline,
+    total_checked: results.length,
+    found: results.filter(r => r.status === "candidate" || r.status === "observed"),
+    results,
+    checked_at: new Date().toISOString(),
+  });
+});
+
+app.post("/api/v1/tools/phoneinfoga", async (c) => {
+  let body: any = {};
+  try { body = await c.req.json(); } catch { return c.json({ detail: "Invalid JSON body" }, 400); }
+  const phone = typeof body.phone === "string" ? body.phone.trim() : (typeof body.query === "string" ? body.query.trim() : "");
+  if (!phone) return c.json({ detail: "Phone number required" }, 422);
+
+  const parsed = await analyzePhoneNumber(phone);
+  const footprint = generatePhoneInfogaFootprint(parsed.e164, parsed.formatted);
+
+  return c.json({
+    tool: "phoneinfoga",
+    e164: parsed.e164,
+    formatted: parsed.formatted,
+    country: parsed.country,
+    countryCode: parsed.countryCode,
+    messagingLinks: footprint.messagingLinks,
+    dorks: footprint.dorks,
+    checked_at: new Date().toISOString(),
+  });
+});
+
+app.post("/api/v1/tools/theharvester", async (c) => {
+  let body: any = {};
+  try { body = await c.req.json(); } catch { return c.json({ detail: "Invalid JSON body" }, 400); }
+  const domain = typeof body.domain === "string" ? body.domain.trim() : (typeof body.query === "string" ? body.query.trim() : "");
+  if (!domain) return c.json({ detail: "Domain required" }, 422);
+
+  const isOffline = body.offline === true || c.env.OFFLINE_MODE === "true" || c.req.header("x-offline-mode") === "true";
+  const result = await runTheHarvesterScan(domain, { offline: isOffline });
+
+  return c.json({
+    tool: "theharvester",
+    ...result,
+  });
+});
 
 // Search: List past investigations
 app.get("/api/v1/search/runs", async (c) => {

@@ -18,6 +18,10 @@ import {
   createAccessToken,
   decodeAccessToken,
 } from "../src/security.ts";
+import { runSherlockScan, SHERLOCK_PLATFORMS } from "../src/sherlock.ts";
+import { generatePhoneInfogaFootprint } from "../src/phoneinfoga.ts";
+import { runTheHarvesterScan } from "../src/harvester.ts";
+import { evaluateSpiderFootCorrelations, queryBgpView, queryAlienVaultOTX } from "../src/spiderfoot.ts";
 
 test("valid username validation", () => {
   assert.equal(validateUsername("octocat_42"), "octocat_42");
@@ -490,4 +494,92 @@ test("offline intelligence modules perform local analysis with zero network requ
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("Sherlock integration performs multi-platform target synthesis with 60+ platforms", async () => {
+  assert.ok(SHERLOCK_PLATFORMS.length >= 60);
+  for (const p of SHERLOCK_PLATFORMS) {
+    assert.ok(p.name && p.category && p.urlTemplate && p.domain);
+    assert.ok(p.urlTemplate.includes("{username}"));
+    assert.ok(p.urlTemplate.startsWith("https://") || p.urlTemplate.startsWith("http://"));
+  }
+
+  const results = await runSherlockScan("octocat", { offline: true, limit: 10 });
+  assert.equal(results.length, 10);
+  for (const r of results) {
+    assert.ok(r.url.includes("octocat"));
+    assert.equal(r.status, "inconclusive");
+    assert.ok(r.detail.includes("Offline"));
+  }
+});
+
+test("PhoneInfoga integration generates direct messaging links and targeted Google OSINT dorks", () => {
+  const footprint = generatePhoneInfogaFootprint("+12025550123", "+1 (202) 555-0123");
+  assert.equal(footprint.e164, "+12025550123");
+  assert.equal(footprint.messagingLinks.whatsapp, "https://wa.me/12025550123");
+  assert.equal(footprint.messagingLinks.telegram, "https://t.me/+12025550123");
+  assert.ok(footprint.messagingLinks.viber.includes("12025550123"));
+  assert.equal(footprint.messagingLinks.sms, "sms:+12025550123");
+
+  assert.ok(footprint.dorks.length >= 8);
+  for (const dork of footprint.dorks) {
+    assert.ok(dork.category && dork.title && dork.query && dork.searchUrl);
+    assert.ok(dork.searchUrl.startsWith("https://www.google.com/search?q="));
+  }
+});
+
+test("theHarvester passive discovery integrates CT logs and subdomain synthesis", async () => {
+  const harvest = await runTheHarvesterScan("shadowtrace.org", { offline: true });
+  assert.equal(harvest.domain, "shadowtrace.org");
+  assert.ok(harvest.subdomains.length >= 5);
+  assert.ok(harvest.subdomains.includes("www.shadowtrace.org"));
+  assert.ok(harvest.subdomains.includes("api.shadowtrace.org"));
+  assert.ok(harvest.sourcesUsed.includes("Offline Subdomain Lexical Synthesis"));
+});
+
+test("SpiderFoot modular engine evaluates passive DNS, BGPView routing, and correlation rules", async () => {
+  const correlations = evaluateSpiderFootCorrelations("target.org", "domain", [
+    { provider: "RDAP WHOIS", status: "observed", detail: "Registrant Email: admin@target.org" },
+    { provider: "GitHub", status: "candidate", detail: "Developer repo commits match admin@target.org" },
+    { provider: "Shodan", status: "observed", extra_fields: { "Known Vulnerabilities (CVEs)": "CVE-2023-38606" } },
+    { provider: "DNS Bucket", status: "observed", detail: "Configured target-assets.s3.amazonaws.com public bucket" },
+    { provider: "Email Authentication", status: "observed", detail: "DMARC policy record not found in DNS" }
+  ]);
+
+  assert.equal(correlations.length, 4);
+  const ruleIds = correlations.map(c => c.ruleId);
+  assert.ok(ruleIds.includes("SF-CORR-EMAIL-WHOIS-GIT"));
+  assert.ok(ruleIds.includes("SF-CORR-VULN-CRITICAL"));
+  assert.ok(ruleIds.includes("SF-CORR-CLOUD-BUCKET"));
+  assert.ok(ruleIds.includes("SF-CORR-SPOOFING-SURFACE"));
+
+  const bgp = await queryBgpView("8.8.8.8", { offline: true });
+  assert.equal(bgp.ok, true);
+  assert.equal(bgp.asn, 15169);
+  assert.equal(bgp.asName, "Google LLC");
+
+  const otx = await queryAlienVaultOTX("shadowtrace.org", "domain", { offline: true });
+  assert.equal(otx.ok, true);
+  assert.equal(otx.threatScore, 0);
+});
+
+test("Collector framework seamlessly dispatches to Sherlock, SpiderFoot, PhoneInfoga, and theHarvester", async () => {
+  // Phone with PhoneInfoga
+  const phoneRes = await collectorManager.dispatch("+12025550123", "phone");
+  assert.ok(phoneRes.evidence.some(e => e.provider === "PhoneInfoga Direct Inquiries"));
+  assert.ok(phoneRes.evidence.some(e => e.provider === "PhoneInfoga Reconnaissance Dorks"));
+
+  // Domain with theHarvester and SpiderFoot OTX
+  const domainRes = await collectorManager.dispatch("shadowtrace.org", "domain", { offline: true });
+  assert.ok(domainRes.evidence.some(e => e.provider === "theHarvester Passive Discovery"));
+  assert.ok(domainRes.evidence.some(e => e.provider === "SpiderFoot AlienVault OTX Threat Pulse"));
+
+  // IP with SpiderFoot BGPView and OTX
+  const ipRes = await collectorManager.dispatch("8.8.8.8", "ip", { offline: true });
+  assert.ok(ipRes.evidence.some(e => e.provider === "SpiderFoot BGPView Network Intelligence"));
+  assert.ok(ipRes.evidence.some(e => e.provider === "SpiderFoot AlienVault OTX Threat Intelligence"));
+
+  // Username with Sherlock
+  const userRes = await collectorManager.dispatch("octocat", "username", { offline: true });
+  assert.ok(userRes.evidence.some(e => e.provider.startsWith("Sherlock:")));
 });
